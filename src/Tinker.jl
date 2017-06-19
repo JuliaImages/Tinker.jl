@@ -1,15 +1,10 @@
 module Tinker
 
-# package code goes here
+using Gtk.ShortNames, GtkReactive, Graphics, Colors, Images
 
-using Gtk.ShortNames, GtkReactive, TestImages, Graphics, Colors, Images
-
-function setupfile(file)
-    # file info
-    image = load(file)
-
+function init_gui(image::AbstractArray; name="Tinker")
     # set up window
-    win = Window(file, size(image,2), size(image,1)); #name of image
+    win = Window(name, size(image,2), size(image,1));
     c = canvas(UserUnit);
     push!(win, c);
 
@@ -24,10 +19,8 @@ function setupfile(file)
     
     # create a view diagram
     viewdim = map(zr) do r
-        fvx = r.fullview.x # x range of image
-        fvy = r.fullview.y # y range if image
-        cvx = r.currentview.x # the x range of currentview
-        cvy = r.currentview.y # the y range of currentview
+        fvx, fvy = r.fullview.x, r.fullview.y # x, y range of image
+        cvx, cvy = r.currentview.x, r.currentview.y # x, y range of currentview
         xsc = (cvx.right-cvx.left)/(10*(fvx.right-fvx.left)) # x scale
         ysc = (cvy.right-cvy.left)/(10*(fvy.right-fvy.left)) # y scale
         x_off = cvx.left+75*xsc # x offset 
@@ -51,10 +44,11 @@ function setupfile(file)
         copy!(cnvs, img) # show image on canvas at current zoom level
         set_coordinates(cnvs, r) # set canvas coordinates to zr
         # draw view diagram IF zoomed in
-        ctx = getgc(cnvs)
-        drawrect(ctx, vd[1], colorant"blue")
-        drawrect(ctx, vd[2], colorant"blue")
-        # draw zoom % above/below view diagram OR put that info in title bar
+        if r.fullview != r.currentview
+            ctx = getgc(cnvs)
+            drawrect(ctx, vd[1], colorant"blue")
+            drawrect(ctx, vd[2], colorant"blue")
+        end
     end
 
     # rectangle draw function
@@ -78,5 +72,6 @@ function setupfile(file)
     nothing
 end;
 
+init_gui(file::AbstractString) = init_gui(load(file); name=file)
 
 end # module
