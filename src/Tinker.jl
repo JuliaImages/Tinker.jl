@@ -19,33 +19,31 @@ function init_gui(image::AbstractArray; name="Tinker")
     
     # create a view diagram
     viewdim = map(zr) do r
-        fvx, fvy = r.fullview.x, r.fullview.y # x, y range of image
+        fvx, fvy = r.fullview.x, r.fullview.y # x, y range of full view
         cvx, cvy = r.currentview.x, r.currentview.y # x, y range of currentview
-        xsc = (cvx.right-cvx.left)/(10*(fvx.right-fvx.left)) # x scale
-        ysc = (cvy.right-cvy.left)/(10*(fvy.right-fvy.left)) # y scale
-        x_off = cvx.left+75*xsc # x offset 
-        y_off = cvy.left+75*ysc # y offset
-        #RECTANGLES:
-        rect1 = [ (0.0 + x_off, 0.0 + y_off),
-                  (fvx.right*xsc + x_off, 0.0 + y_off),
-                  (fvx.right*xsc + x_off, fvy.right*ysc + y_off),
-                  (0.0 + x_off, fvy.right*ysc + y_off),
-                  (0.0 + x_off, 0.0 + y_off) ]
-        rect2 = [ (x_off + (cvx.left-1)*xsc, y_off + (cvy.left-1)*ysc),
-                  (x_off + cvx.right*xsc, y_off + (cvy.left-1)*ysc),
-                  (x_off + cvx.right*xsc, y_off + cvy.right*ysc),
-                  (x_off + (cvx.left-1)*xsc, y_off + cvy.right*ysc),
-                  (x_off + (cvx.left-1)*xsc, y_off + (cvy.left-1)*ysc) ]
-        return [rect1, rect2]
+        xfull, yfull =
+            (fvx.right-fvx.left),(fvy.right-fvy.left) # width of full view
+        xcurrent, ycurrent =
+            (cvx.right-cvx.left),(cvy.right-cvy.left) # width of current view
+        # scale
+        xsc,ysc = 0.1*(xcurrent/xfull), 0.1*(ycurrent/yfull)
+        # offset
+        x_off,y_off = cvx.left+(0.01*xcurrent),cvy.left+(0.01*ycurrent)
+        # represents full view: x,y,w,h
+        rect1 = [x_off, y_off, xsc*xfull, ysc*yfull]
+        # represents current view: x,y,w,h
+        rect2 = [x_off+(cvx.left*xsc), y_off+(cvy.left*ysc),
+              xsc*xcurrent, ysc*ycurrent]
+        return [rect1,rect2]
     end
 
     # draw
     redraw = draw(c, imagesig, zr, viewdim) do cnvs, img, r, vd
         copy!(cnvs, img) # show image on canvas at current zoom level
         set_coordinates(cnvs, r) # set canvas coordinates to zr
-        # draw view diagram IF zoomed in
+        ctx = getgc(cnvs)
+        # draw view diagram if zoomed in
         if r.fullview != r.currentview
-            ctx = getgc(cnvs)
             drawrect(ctx, vd[1], colorant"blue")
             drawrect(ctx, vd[2], colorant"blue")
         end
@@ -53,14 +51,11 @@ function init_gui(image::AbstractArray; name="Tinker")
 
     # rectangle draw function
     function drawrect(ctx, rect, color)
-        move_to(ctx, rect[1][1], rect[1][2])
         set_source(ctx, color)
-        for i = 2:length(rect)
-            line_to(ctx, rect[i][1], rect[i][2])
-        end
+        rectangle(ctx, rect[1], rect[2], rect[3], rect[4])
         stroke(ctx)
     end;
-
+    
     showall(win);
 
     # zoom actions
