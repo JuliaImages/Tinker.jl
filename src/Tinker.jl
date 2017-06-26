@@ -2,6 +2,23 @@ module Tinker
 
 using Gtk.ShortNames, GtkReactive, Graphics, Colors, Images
 
+## Generally useful structs and functions
+# Rectangle structure
+struct Rectangle
+    x::Float64
+    y::Float64
+    w::Float64
+    h::Float64
+end
+
+# rectangle draw function
+function drawrect(ctx, rect, color)
+    set_source(ctx, color)
+    rectangle(ctx, rect.x, rect.y, rect.w, rect.h)
+    stroke(ctx)
+end;
+
+## Sets up an image in a separate window with the ability to adjust view
 function init_gui(image::AbstractArray; name="Tinker")
     # set up window
     win = Window(name, size(image,2), size(image,1));
@@ -29,11 +46,11 @@ function init_gui(image::AbstractArray; name="Tinker")
         xsc,ysc = 0.1*(xcurrent/xfull), 0.1*(ycurrent/yfull)
         # offset
         x_off,y_off = cvx.left+(0.01*xcurrent),cvy.left+(0.01*ycurrent)
-        # represents full view: x,y,w,h
-        rect1 = [x_off, y_off, xsc*xfull, ysc*yfull]
-        # represents current view: x,y,w,h
-        rect2 = [x_off+(cvx.left*xsc), y_off+(cvy.left*ysc),
-              xsc*xcurrent, ysc*ycurrent]
+        # represents full view
+        rect1 = Rectangle(x_off, y_off, xsc*xfull, ysc*yfull)
+        # represents current view
+        rect2 = Rectangle(x_off+(cvx.left*xsc), y_off+(cvy.left*ysc),
+                          xsc*xcurrent, ysc*ycurrent)
         return [rect1,rect2]
     end
 
@@ -48,13 +65,6 @@ function init_gui(image::AbstractArray; name="Tinker")
             drawrect(ctx, vd[2], colorant"blue")
         end
     end
-
-    # rectangle draw function
-    function drawrect(ctx, rect, color)
-        set_source(ctx, color)
-        rectangle(ctx, rect[1], rect[2], rect[3], rect[4])
-        stroke(ctx)
-    end;
     
     showall(win);
 
