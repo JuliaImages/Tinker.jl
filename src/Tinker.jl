@@ -65,6 +65,29 @@ function init_gui(image::AbstractArray; name="Tinker")
             drawrect(ctx, vd[2], colorant"blue")
         end
     end
+
+    # holds x zoom level
+    xzoom = map(zr) do r
+        100*r.fullview.x.right/(r.currentview.x.right-(r.currentview.x.left-1))
+    end
+
+    # hold y zoom level
+    yzoom = map(zr) do r
+        100*r.fullview.y.right/(r.currentview.y.right-(r.currentview.y.left-1))
+    end
+
+    # performs proportional zoom in (x2 each time)
+    function zoomin()
+        push!(zr, zoom(value(zr), 0.5))
+        println("zoom x%: ", value(xzoom),"\n zoom y%: ", value(yzoom))
+        # why doesn't this update after push?
+    end
+
+    # performs proportional zoom out (x0.5 each time)
+    function zoomout() # doesn't perfectly undo zoomin: problem
+        push!(zr, zoom(value(zr), 2.0))
+        println("zoom x%: ", value(xzoom),"\n zoom y%: ", value(yzoom))
+    end
     
     showall(win);
 
