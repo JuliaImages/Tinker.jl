@@ -212,8 +212,50 @@ function init_gui(image::AbstractArray; name="Tinker")
 
     showall(win);
 
+    function zoom_clicked{T}(c::GtkReactive.Canvas,
+                          zr::Signal{ZoomRegion{T}})
+        # Left click calls zoomin() centered on pixel clicked
+        # Right click calls zoomout() centered on pixel clicked
+        dragging = Signal(false)
+        moved = Signal(false)
+        start = Signal(XY{UserUnit}(-1,-1))
+        start_view = Signal(ZoomRegion((1:1,1:1)))
+
+        sigclick = map(c.mouse.buttonpress) do btn
+            push!(dragging,true)
+            push!(moved,false)
+            push!(start,btn.position)
+            push!(start_view,value(zr))
+        end
+
+        dummybtn = MouseButton{UserUnit}()
+        sigdrag = map(filterwhen(dragging, dummybtn, c.mouse.motion)) do btn
+            # modify this so it only pushes if the view actually shifted
+            # (fractions of pixels don't cause view to move)
+            push!(moved,true)
+        end
+
+
+        sigend = map(c.mouse.buttonrelease) do btn
+            if !value(moved) 
+                #println("modifiers=",btn.modifiers)
+                if btn.button == 1 && btn.modifiers == 256 #if left click & no modifiers
+                    center = XY(Int(round(Float64(btn.position.x))),
+                                Int(round(Float64(btn.position.y))))
+                    zoomin(center) 
+                elseif btn.button == 3 || btn.modifiers == 260 # right click/ctrl
+                    center = XY(Int(round(Float64(btn.position.x))),
+                                Int(round(Float64(btn.position.y))))
+                    zoomout(center)
+                end
+            end
+            push!(dragging,false) # no longer dragging
+            push!(moved,false) # reset moved
+        end
+        append!(c.preserved, [moved, sigclick, sigdrag, sigend])
+    end
+
     # zoom actions
-    # remove later and replace with Tinker controls
     pandrag = init_pan_drag(c, zr) # dragging moves image
     zoom_ctrl = zoom_clicked(c, zr)
 
@@ -222,46 +264,5 @@ function init_gui(image::AbstractArray; name="Tinker")
 end;
 
 init_gui(file::AbstractString) = init_gui(load(file); name=file)
-
-function zoom_clicked(c::GtkReactive.canvas, zr::Signal{ZoomRegion})
-    # Left click calls zoomin() centered on pixel clicked
-    # Right click calls zoomout() centered on pixel clicked
-    dragging = Signal(false)
-    moved = Signal(false)
-    start = Signal(XY{UserUnit}(-1,-1))
-    start_view = Signal(ZoomRegion((1:1,1:1)))
-
-    sigclick = map(c.mouse.buttonpress) do btn # seems weird that this isn't a fn
-        push!(dragging,true)
-        push!(moved,false)
-        push!(start,btn.position)
-        push!(start_view,value(zr))
-    end
-
-    dummybtn = MouseButton{UserUnit}()
-    sigdrag = map(filterwhen(dragging, dummybtn, c.mouse.motion)) do btn
-        # modify this so it only pushes if the view actually shifted
-        # (fractions of pixels don't cause view to move)
-        push!(moved,true)
-    end
-
-
-    sigend = map(c.mouse.buttonrelease) do btn
-        if !value(moved) 
-            #println("modifiers=",btn.modifiers)
-            if btn.button == 1 && btn.modifiers == 256 #if left click & no modifiers
-                center = XY(Int(round(Float64(btn.position.x))),
-                            Int(round(Float64(btn.position.y))))
-                zoomin(center) 
-            elseif btn.button == 3 || btn.modifiers == 260 # right click/ctrl
-                center = XY(Int(round(Float64(btn.position.x))),
-                            Int(round(Float64(btn.position.y))))
-                zoomout(center)
-            end
-        end
-        push!(dragging,false) # no longer dragging
-        push!(moved,false) # reset moved
-    end
-end
 
 end # module
