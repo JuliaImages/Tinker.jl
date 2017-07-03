@@ -11,6 +11,9 @@ struct Rectangle
     h::Float64
 end
 
+Rectangle() = Rectangle(0,0,-1,-1)
+Base.isempty(R::Rectangle) = R.w < 0 || R.h < 0
+
 # rectangle draw function
 function drawrect(ctx, rect, color)
     set_source(ctx, color)
@@ -76,17 +79,42 @@ function init_gui(image::AbstractArray; name="Tinker")
         100*r.fullview.y.right/(r.currentview.y.right-(r.currentview.y.left-1))
     end
 
-    # performs proportional zoom in (x2 each time)
-    function zoomin()
-        push!(zr, zoom(value(zr), 0.5))
-        println("zoom x%: ", value(xzoom),"\n zoom y%: ", value(yzoom))
-        # why doesn't this update after push?
-    end
+    # Zooms zr to the decimal % entered; view centered around center XY
+    function zoom_percent(z::Float64, zr::ZoomRegion, center::XY{Int64})
+        # Calculate size of new view
+        range = zr.fullview
+        fsize = XY(range.x.right,range.y.right) # full size
+        csize = XY(Int(round(fsize.x/z)), Int(round(fsize.y/z))) # new current size
+        # Calculate center point of new view
+        offset = XY(center.x-Int(round(csize.x/2)),
+                    center.y-Int(round(csize.y/2))) # offset of cv
+        # Limit offset
+        if offset.x < 0
+            y = offset.y
+            offset = XY(0, y)
+        elseif offset.x > (fsize.x-csize.x)
+            y = offset.y
+            offset = XY(fsize.x-csize.x, y)
+        end
+        if offset.y < 0
+            x = offset.x
+            offset = XY(x, 0)
+        elseif offset.y > (fsize.y-csize.y)
+            x = offset.x
+            offset = XY(x, fsize.y-csize.y)
+        end
+        
+        return (offset.y+1:offset.y+csize.y, offset.x+1:offset.x+csize.x)
+    end # return value can be pushed to a zr
 
-    # performs proportional zoom out (x0.5 each time)
-    function zoomout() # doesn't perfectly undo zoomin: problem
-        push!(zr, zoom(value(zr), 2.0))
-        println("zoom x%: ", value(xzoom),"\n zoom y%: ", value(yzoom))
+    # Sets default center to be the middle of the cv
+    function zoom_percent(z::Float64, zr::ZoomRegion)
+        # Calculate cv
+        range = zr.currentview
+        csize = XY(range.x.right-range.x.left,range.y.right-range.y.left)
+        center = XY(range.x.left+Int(round(csize.x/2)),
+                    range.y.left+Int(round(csize.y/2)))
+        zoom_percent(z,zr,center)
     end
     
     showall(win);
