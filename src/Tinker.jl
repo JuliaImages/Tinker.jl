@@ -24,8 +24,7 @@ end;
 # Zooms zr to the decimal % entered; view centered around center XY
 function zoom_percent(z::Float64, zr::ZoomRegion, center::XY{Int})
     # Calculate size of new view
-    range = zr.fullview
-    fsize = XY(range.x.right,range.y.right) # full size
+    fsize = XY(zr.fullview.x.right,zr.fullview.y.right) # full size
     csize = XY(Int(round(fsize.x/z)), Int(round(fsize.y/z))) # new current size
     # Calculate center point of new view
     offset = XY(center.x-Int(round(csize.x/2)),
@@ -52,15 +51,15 @@ end # return value can be pushed to a zr
 # Sets default center to be the middle of the cv
 function zoom_percent(z::Float64, zr::ZoomRegion)
     # Calculate cv
-    zoom_percent(z,zr,find_center(zr))
+    return zoom_percent(z,zr,find_center(zr))
 end
 
 # Finds rounded center point of the current view of given ZoomRegion
 function find_center(zr::ZoomRegion)
     range = zr.currentview
     csize = XY(range.x.right-range.x.left,range.y.right-range.y.left)
-    center = XY(range.x.left+Int(round(csize.x/2)),
-                range.y.left+Int(round(csize.y/2)))
+    center = XY(range.x.left+Int(floor(csize.x/2)),
+                range.y.left+Int(floor(csize.y/2)))
     return center
 end
 
