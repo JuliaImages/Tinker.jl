@@ -111,6 +111,8 @@ function init_gui(image::AbstractArray; name="Tinker")
         end
     end
 
+    showall(win);
+
     # holds x zoom level
     xzoom = map(zr) do r
         100*r.fullview.x.right/(r.currentview.x.right-(r.currentview.x.left-1))
@@ -150,7 +152,7 @@ function init_gui(image::AbstractArray; name="Tinker")
     end
 
     # performs proportional zoom in
-    function zoomin(center::XY{Int})
+    function zoom_in(center::XY{Int})
         global i
         if 1 <= i <= length(zpercents)
             if i < length(zpercents)
@@ -163,12 +165,13 @@ function init_gui(image::AbstractArray; name="Tinker")
         end
     end
 
-    function zoomin()
-        zoomin(find_center(value(zr)))
+    # Automatically centered zoom_in
+    function zoom_in()
+        zoom_in(find_center(value(zr)))
     end
 
-    # performs proportional zoom out
-    function zoomout(center::XY{Int})
+    # Performs proportional zoom out; centers on given XY
+    function zoom_out(center::XY{Int})
         global i
         if 1 <= i <= length(zpercents)
             if i > 1
@@ -181,8 +184,9 @@ function init_gui(image::AbstractArray; name="Tinker")
         end
     end
 
-    function zoomout()
-        zoomout(find_center(value(zr)))
+    # Automatically centered zoom_out
+    function zoom_out()
+        zoom_out(find_center(value(zr)))
     end
 
     # performs proportional, centered zoom to level entered
@@ -193,13 +197,11 @@ function init_gui(image::AbstractArray; name="Tinker")
         nothing
     end
 
-    showall(win);
-
     # Mouse actions for zoom
     function zoom_clicked{T}(c::GtkReactive.Canvas,
                           zr::Signal{ZoomRegion{T}})
-        # Left click calls zoomin() centered on pixel clicked
-        # Right click calls zoomout() centered on pixel clicked
+        # Left click calls zoom_in() centered on pixel clicked
+        # Right click calls zoom_out() centered on pixel clicked
         dragging = Signal(false)
         moved = Signal(false)
         start = Signal(XY{UserUnit}(-1,-1))
@@ -226,11 +228,11 @@ function init_gui(image::AbstractArray; name="Tinker")
                 if btn.button == 1 && btn.modifiers == 256 #if left click & no modifiers
                     center = XY(Int(round(Float64(btn.position.x))),
                                 Int(round(Float64(btn.position.y))))
-                    zoomin(center) 
+                    zoom_in(center) 
                 elseif btn.button == 3 || btn.modifiers == 260 # right click/ctrl
                     center = XY(Int(round(Float64(btn.position.x))),
                                 Int(round(Float64(btn.position.y))))
-                    zoomout(center)
+                    zoom_out(center)
                 end
             end
             push!(dragging,false) # no longer dragging
