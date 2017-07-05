@@ -22,7 +22,7 @@ function drawrect(ctx, rect, color)
 end;
 
 # Zooms zr to the decimal % entered; view centered around center XY
-function zoom_percent(z::Float64, zr::ZoomRegion, center::XY{Int64})
+function zoom_percent(z::Float64, zr::ZoomRegion, center::XY{Int})
     # Calculate size of new view
     range = zr.fullview
     fsize = XY(range.x.right,range.y.right) # full size
@@ -52,11 +52,16 @@ end # return value can be pushed to a zr
 # Sets default center to be the middle of the cv
 function zoom_percent(z::Float64, zr::ZoomRegion)
     # Calculate cv
+    zoom_percent(z,zr,find_center(zr))
+end
+
+# Finds rounded center point of the current view of given ZoomRegion
+function find_center(zr::ZoomRegion)
     range = zr.currentview
     csize = XY(range.x.right-range.x.left,range.y.right-range.y.left)
     center = XY(range.x.left+Int(round(csize.x/2)),
                 range.y.left+Int(round(csize.y/2)))
-    zoom_percent(z,zr,center)
+    return center
 end
 
 ## Sets up an image in a separate window with the ability to adjust view
@@ -120,6 +125,31 @@ function init_gui(image::AbstractArray; name="Tinker")
     zpercents = [1.0,1.2,1.5,2.0,2.5,3.0,4.0,8.0]
     global i = 1 # or: const i = Ref(1)
 
+    # Returns index of next zoom level after current in zpercents,
+    # even if current zoom level is not in zpercents
+    function next_zoom()
+        index = 1
+        for n in zpercents
+            if n > value(xzoom)
+                break
+            end
+            index += 1
+        end
+        return index
+    end
+    
+    # Returns index of zoom level before current in zpercents
+    function prev_zoom()
+        index = length(zpercents)
+        for n in zpercents[end:-1:1] # loop backwards      
+            if n < value(xzoom) 
+                break
+            end
+            index -= 1
+        end
+        return index
+    end
+
     # performs proportional zoom in
     function zoomin(center::XY{Int})
         global i
@@ -129,36 +159,13 @@ function init_gui(image::AbstractArray; name="Tinker")
                 push!(zr, zoom_percent(zpercents[i],value(zr),center))
             end
         else
-            index = 1
-            for n in zpercents
-                if n > value(xzoom)
-                    break
-                end
-                index += 1
-            end
-            i = index
+            i = next_zoom()
             push!(zr, zoom_percent(zpercents[i],value(zr),center))
         end
     end
 
     function zoomin()
-        global i
-        if 1 <= i <= length(zpercents)
-            if i < length(zpercents)
-                i += 1
-                push!(zr, zoom_percent(zpercents[i],value(zr)))
-            end
-        else
-            index = 1
-            for n in zpercents
-                if n > value(xzoom)
-                    break
-                end
-                index += 1
-            end
-            i = index
-            push!(zr, zoom_percent(zpercents[i],value(zr)))
-        end
+        zoomin(find_center(value(zr)))
     end
 
     # performs proportional zoom out
@@ -170,48 +177,26 @@ function init_gui(image::AbstractArray; name="Tinker")
                 push!(zr, zoom_percent(zpercents[i],value(zr),center))
             end
         else
-            index = length(zpercents)
-            for n in zpercents[end:-1:1] # loop backwards      
-                if n < value(xzoom) 
-                    break
-                end
-                index -= 1
-            end
-            i = index
+            i = prev_zoom()
             push!(zr, zoom_percent(zpercents[i],value(zr),center))
         end
     end
 
     function zoomout()
-        global i
-        if 1 <= i <= length(zpercents)
-            if i > 1
-                i -= 1
-                push!(zr, zoom_percent(zpercents[i],value(zr)))
-            end
-        else
-            index = length(zpercents)
-            for n in zpercents[end:-1:1] # loop backwards      
-                if n < value(xzoom) 
-                    break
-                end
-                index -= 1
-            end
-            i = index
-            push!(zr, zoom_percent(zpercents[i],value(zr)))
-        end
+        zoomout(find_center(value(zr)))
     end
 
     # performs proportional, centered zoom to level entered
     function zoom_to(z::Float64)
         global i
-        push!(zr, zoom_percent(z,value(zr)))
         i = -1
+        push!(zr, zoom_percent(z,value(zr)))
         nothing
     end
 
     showall(win);
 
+    # Mouse actions for zoom
     function zoom_clicked{T}(c::GtkReactive.Canvas,
                           zr::Signal{ZoomRegion{T}})
         # Left click calls zoomin() centered on pixel clicked
