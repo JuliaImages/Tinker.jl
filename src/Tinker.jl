@@ -14,12 +14,143 @@ end
 Rectangle() = Rectangle(0,0,-1,-1)
 Base.isempty(R::Rectangle) = R.w < 0 || R.h < 0
 
+# Creates a Rectangle out of any two points
+function Rectangle(p1::XY,p2::XY)
+    # initialize
+    x,y,w,h = 0,0,-1,-1
+    # find x
+    if p1.x < p2.x
+        x = p1.x
+    elseif p2.x < p1.x
+        x = p2.x
+    else x = 0 end
+    # find y
+    if p1.y < p2.y
+        y = p1.y
+    elseif p2.y < p1.y
+        y = p2.y
+    else y = 0 end
+    # find w and h
+    if abs(p1.x - p2.x) > 0
+        w = abs(p1.x - p2.x)
+    end
+    if abs(p1.y - p2.y) > 0
+        h = abs(p1.y - p2.y)
+    end
+    # update rect
+    if x!=0 && y!=0 && w!=-1 && h!=-1
+        return Rectangle(x,y,w,h)
+    else
+        return Rectangle()
+    end
+end
+
 # rectangle draw function
 function drawrect(ctx, rect, color)
     set_source(ctx, color)
     rectangle(ctx, rect.x, rect.y, rect.w, rect.h)
     stroke(ctx)
 end;
+
+# Handles modify rectangles (extend to other shapes later)
+struct Handle
+    r::Rectangle
+    pos::String # refers to which side or corner of rectangle handle is on
+    x::Float64
+    y::Float64
+end
+
+Handle() = Handle(Rectangle(),"",0,0)
+Base.isempty(H::Handle) = isempty(H.r)
+
+# Creates handle given a Rectangle and a position
+function Handle(r::Rectangle, pos::String)
+    # Position of handle refers to center coordinate of handle based on rect
+    position_coord = Dict("tlc"=>(r.x,r.y),"ts"=>(r.x+(r.w/2),r.y),
+                          "trc"=>(r.x+r.w,r.y),"rs"=>(r.x+r.w,r.y+(r.h/2)),
+                          "brc"=>(r.x+r.w,r.y+r.h),"bs"=>(r.x+(r.w/2),r.y+r.h),
+                          "blc"=>(r.x,r.y+r.h),"ls"=>(r.x,r.y+(r.h/2)))
+    if pos=="tlc" || pos=="ts" || pos=="trc" || pos=="rs" || pos=="brc" ||
+       pos=="bs" || pos=="blc" || pos=="ls"
+        x = position_coord[pos][1]
+        y = position_coord[pos][2]
+        return Handle(r,pos,x,y)
+    else
+        println("Not a valid Handle position.")
+        return Handle()
+    end
+end
+
+# Draws a handle
+function drawhandle(ctx, handle::Handle, color)
+    if !isempty(handle)
+        set_source(ctx,color)
+        d = 8 # physical dimension of handle
+        rectangle(ctx, handle.x-(d/2), handle.y-(d/2),
+                  d, d)
+        stroke(ctx)
+    end
+end; # like drawrect, but makes x,y refer to center of handle
+
+# Returns true if a handle is clicked
+function is_clicked(pt::XY, handle::Handle)
+    if (handle.x - 5 < pt.x < handle.x + 5) &&
+        (handle.y - 5 < pt.y < handle.y + 5)
+        return true
+    else
+        return false
+    end
+end
+
+# A rectangle with handles at all 8 positions
+struct RectHandle
+    r::Rectangle
+    h::NTuple{8,Handle}
+end
+
+RectHandle() = RectHandle(Rectangle())
+Base.isempty(RH::RectHandle) = isempty(RH.r)
+
+# Creates a RectHandle given just a Rectangle
+function RectHandle(r::Rectangle)
+    # derive all 8 handles from r
+    # numbered 1-8, 1=tlc, moving clockwise around rectangle
+    h = (Handle(r, "tlc"), Handle(r, "ts"), Handle(r, "trc"), Handle(r, "rs"),
+         Handle(r, "brc"), Handle(r, "bs"), Handle(r, "blc"), Handle(r, "ls"))
+    return RectHandle(r,h)
+end
+
+# Draws RectHandle
+function drawrecthandle(ctx, rh::RectHandle, color1, color2)
+    drawrect(ctx, rh.r, color1)
+    for n in 1:length(rh.h)
+        drawhandle(ctx, rh.h[n], color2)
+    end
+end
+
+# Given a RectHandle and a position, returns the corresponding Handle
+function get_handle(rh::RectHandle, pos::String)
+    if pos == rh.h[1].pos
+        return rh.h[1]
+    elseif pos == rh.h[2].pos
+        return rh.h[2]
+    elseif pos == rh.h[3].pos
+        return rh.h[3]
+    elseif pos == rh.h[4].pos
+        return rh.h[4]
+    elseif pos == rh.h[5].pos
+        return rh.h[5]
+    elseif pos == rh.h[6].pos
+        return rh.h[6]
+    elseif pos == rh.h[7].pos
+        return rh.h[7]
+    elseif pos == rh.h[8].pos
+        return rh.h[8]
+    else
+        println("Not a valid position")
+        return Handle()
+    end
+end
 
 # Zooms zr to the decimal % entered; view centered around center XY
 function zoom_percent(z::Float64, zr::ZoomRegion, center::XY{Int})
@@ -246,7 +377,6 @@ function init_gui(image::AbstractArray; name="Tinker")
     zoom_ctrl = zoom_clicked(c, zr)
 
     append!(c.preserved, [zoom_ctrl, pandrag])
-    nothing
 end;
 
 init_gui(file::AbstractString) = init_gui(load(file); name=file)
