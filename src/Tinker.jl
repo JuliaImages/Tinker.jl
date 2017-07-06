@@ -230,20 +230,6 @@ function init_gui(image::AbstractArray; name="Tinker")
         return [rect1,rect2]
     end
 
-    # draw
-    redraw = draw(c, imagesig, zr, viewdim) do cnvs, img, r, vd
-        copy!(cnvs, img) # show image on canvas at current zoom level
-        set_coordinates(cnvs, r) # set canvas coordinates to zr
-        ctx = getgc(cnvs)
-        # draw view diagram if zoomed in
-        if r.fullview != r.currentview
-            drawrect(ctx, vd[1], colorant"blue")
-            drawrect(ctx, vd[2], colorant"blue")
-        end
-    end
-
-    showall(win);
-
     # holds x zoom level
     xzoom = map(zr) do r
         100*r.fullview.x.right/(r.currentview.x.right-(r.currentview.x.left-1))
@@ -330,7 +316,8 @@ function init_gui(image::AbstractArray; name="Tinker")
 
     # Mouse actions for zoom
     function zoom_clicked{T}(c::GtkReactive.Canvas,
-                          zr::Signal{ZoomRegion{T}})
+                             zr::Signal{ZoomRegion{T}})
+        enabled = Signal(true)
         # Left click calls zoom_in() centered on pixel clicked
         # Right click calls zoom_out() centered on pixel clicked
         dragging = Signal(false)
@@ -338,23 +325,22 @@ function init_gui(image::AbstractArray; name="Tinker")
         start = Signal(XY{UserUnit}(-1,-1))
         start_view = Signal(ZoomRegion((1:1,1:1)))
 
-        sigclick = map(c.mouse.buttonpress) do btn
+        dummybtn = MouseButton{UserUnit}()
+        sigclick = map(filterwhen(enabled,dummybtn,c.mouse.buttonpress)) do btn
             push!(dragging,true)
             push!(moved,false)
             push!(start,btn.position)
             push!(start_view,value(zr))
         end
 
-        dummybtn = MouseButton{UserUnit}()
         sigdrag = map(filterwhen(dragging, dummybtn, c.mouse.motion)) do btn
             # modify this so it only pushes if the view actually shifted
             # (fractions of pixels don't cause view to move)
             push!(moved,true)
         end
 
-
-        sigend = map(c.mouse.buttonrelease) do btn
-            if !value(moved) 
+        sigend = map(filterwhen(dragging,dummybtn,c.mouse.buttonrelease)) do btn
+            if !value(moved)
                 #println("modifiers=",btn.modifiers)
                 if btn.button == 1 && btn.modifiers == 256 #if left click & no modifiers
                     center = XY(Int(round(Float64(btn.position.x))),
@@ -370,14 +356,202 @@ function init_gui(image::AbstractArray; name="Tinker")
             push!(moved,false) # reset moved
         end
         append!(c.preserved, [moved, sigclick, sigdrag, sigend])
+        Dict("enabled"=>enabled)
     end
 
-    # zoom actions
-    pandrag = init_pan_drag(c, zr) # dragging moves image
-    zoom_ctrl = zoom_clicked(c, zr)
+# Holds data about rectangular selection
+rect = Signal(Rectangle())
+# Creates RectHandle object dependent on rect
+    recthandle = map(rect) do r
+        RectHandle(r)
+    end
 
-    append!(c.preserved, [zoom_ctrl, pandrag])
+# Mouse actions for selection creation and modification
+# Relies on there being a recthandle and rect object in the environment
+function rect_select{T}(c::GtkReactive.Canvas, zr::Signal{ZoomRegion{T}})
+    enabled = Signal(true)
+    dragging = Signal(false) # true if mouse was pressed down before it was moved
+    modifying = Signal(false) # true if there is an existing rectangle &
+    # user clicked somewhere on it
+    p1 = Signal(XY{UserUnit}(-1.0,-1.0)) # ints or floats? -> make ints
+    p2 = Signal(XY{UserUnit}(-1.0,-1.0))
+    cornermod = Signal(false) # true if modifying a corner handle
+    sidemod = Signal(false) # true if modifying a side handle
+    locmod = Signal(false) # true if modifying rectangle location
+    diff = Signal(XY(0.0,0.0)) # difference between btn.position of sigstart &
+    # top left corner of rectangle
+    modhandle = Signal(Handle())
+    
+    dummybtn = MouseButton{UserUnit}()
+    sigstart = map(filterwhen(enabled,dummybtn,c.mouse.buttonpress)) do btn
+        push!(dragging, true)
+        # If there is already a rectangle in the environment, begin to modify
+        if !isempty(value(recthandle))
+            push!(modifying,true)
+            # Identify if click is inside handle
+            current = Handle()
+            for n in 1:length(value(recthandle).h)
+                if is_clicked(btn.position, value(recthandle).h[n])
+                    current = value(recthandle).h[n]
+                    push!(modhandle, current)
+                    break
+                end
+            end
+            # If the click was on a handle:
+            if !isempty(current)
+                if current.pos[end] == 'c' # 'current' is a corner
+                    push!(cornermod,true)
+                    # calculate opposite corner
+                    opp_pos = ""
+                    if current.pos[1] == 'b'
+                        opp_pos *= "t"
+                    elseif current.pos[1] == 't'
+                        opp_pos *= "b"
+                    end
+                    if current.pos[2] == 'r'
+                        opp_pos *= "l"
+                    elseif current.pos[2] == 'l'
+                        opp_pos *= "r"
+                    end
+                    opp_pos *= "c"
+                    # make this p1
+                    opposite = get_handle(value(recthandle), opp_pos)
+                    push!(p1, XY{UserUnit}(opposite.x,opposite.y))
+                elseif current.pos[end] == 's' # 'current' is a side
+                    push!(sidemod,true)
+                    # do something else
+                    if current.pos == "ts"
+                        # modify top
+                        push!(p1, XY{UserUnit}(value(recthandle).h[5].x, value(recthandle).h[5].y))
+                        push!(p2, XY{UserUnit}(value(rect).x, btn.position.y))
+                    elseif current.pos == "rs"
+                        push!(p1, XY{UserUnit}(value(rect).x, value(rect).y))
+                        push!(p2, XY{UserUnit}(btn.position.x, value(recthandle).h[5].y))
+                    elseif current.pos == "bs"
+                        # modify bottom
+                        push!(p1, XY{UserUnit}(value(rect).x, value(rect).y))
+                        push!(p2, XY{UserUnit}(value(recthandle).h[5].x, btn.position.y))
+                    elseif current.pos == "ls"
+                        # modify left
+                        push!(p1, XY{UserUnit}(value(recthandle).h[5].x, value(recthandle).h[5].y))
+                        push!(p2, XY{UserUnit}(btn.position.x, value(rect).y))
+                    end
+                else
+                    println("???")
+                end
+                # Identify if click is inside rectangle
+            elseif (value(rect).x < btn.position.x < value(rect).x+value(rect).w) &&
+                (value(rect).y < btn.position.y < value(rect).y+value(rect).h)
+                push!(locmod,true)
+                # the difference between click and rectangle corner
+                push!(diff, XY(Float64(btn.position.x) - value(rect).x,
+                               Float64(btn.position.y) - value(rect).y))
+            else # destroy rectangle and allow for a new one to be created
+                push!(modifying,false)
+                push!(rect, Rectangle()) # see about making a new click draw new
+                push!(p1, btn.position)
+                push!(p2, btn.position)
+            end
+            # If there isn't a rectangle in the environment, begin to build one
+        else
+            push!(modifying,false)
+            push!(p1,btn.position) # get values?
+            push!(p2,btn.position)
+        end
+        nothing
+    end
+
+    sigdrag = map(filterwhen(dragging, dummybtn, c.mouse.motion)) do btn
+        # If we are modifying an existing rectangle:
+        if value(modifying)
+            if value(cornermod) # if modifying a corner - why does this flicker
+                push!(p2, btn.position)
+                # update rectangle
+                push!(rect, Rectangle(XY(Float64(value(p1).x), Float64(value(p1).y)), XY(Float64(value(p2).x), Float64(value(p2).y)))) #make better
+            elseif value(sidemod) # if modifying a side
+                # modify side
+                #@show value(modhandle).pos
+                if value(modhandle).pos == "ts"
+                    # modify top
+                    push!(p2, XY{UserUnit}(value(p2).x, btn.position.y))
+                    push!(rect, Rectangle(XY(Float64(value(p1).x), Float64(value(p1).y)), XY(Float64(value(p2).x), Float64(value(p2).y)))) #make better
+                elseif value(modhandle).pos == "rs"
+                    # modify right
+                    push!(p2, XY{UserUnit}(btn.position.x, value(recthandle).h[5].y))
+                    push!(rect, Rectangle(XY(Float64(value(p1).x), Float64(value(p1).y)), XY(Float64(value(p2).x), Float64(value(p2).y)))) #make better
+                elseif value(modhandle).pos == "bs"
+                    # modify bottom
+                    push!(p2, XY{UserUnit}(value(recthandle).h[5].x, btn.position.y))
+                    push!(rect, Rectangle(XY(Float64(value(p1).x), Float64(value(p1).y)), XY(Float64(value(p2).x), Float64(value(p2).y)))) #make better
+                elseif value(modhandle).pos == "ls"
+                    # modify left
+                    push!(p2, XY{UserUnit}(btn.position.x, value(rect).y))
+                    push!(rect, Rectangle(XY(Float64(value(p1).x), Float64(value(p1).y)), XY(Float64(value(p2).x), Float64(value(p2).y)))) #make better
+                end
+            elseif value(locmod) # if modifying the location
+                # move rectangle
+                w = value(rect).w
+                h = value(rect).h
+                push!(rect, Rectangle(btn.position.x-value(diff).x,
+                                      btn.position.y-value(diff).y, w,h))
+            end
+            # If we are building a new rectangle:
+        else
+            push!(p2,btn.position)
+            push!(rect, Rectangle(XY(Float64(value(p1).x), Float64(value(p1).y)), XY(Float64(value(p2).x), Float64(value(p2).y)))) #make better
+        end
+        nothing
+    end
+
+sigend = map(filterwhen(dragging, dummybtn, c.mouse.buttonrelease)) do btn
+    push!(dragging,false)
+    # End modification actions
+    if value(modifying)
+        # modify
+        push!(cornermod,false)
+        push!(locmod,false)
+        push!(sidemod,false)
+        push!(modhandle, Handle())
+        # End build actions
+    elseif !isempty(value(recthandle))
+        push!(p2,btn.position)
+        push!(rect, Rectangle(XY(Float64(value(p1).x), Float64(value(p1).y)), XY(Float64(value(p2).x), Float64(value(p2).y)))) #make better
+    end
+    nothing
+end
+
+append!(c.preserved, [sigstart, sigdrag, sigend])
+Dict("enabled"=>enabled)
+end
+
+
+
+    # mouse actions
+    pandrag = init_pan_drag(c, zr) # dragging moves image
+zoom_ctrl = zoom_clicked(c, zr) # clicking zooms image
+rectselect = rect_select(c,zr) # click + drag creates/modifies rect selection
+#push!(pandrag["enabled"], false)
+#push!(zoom_ctrl["enabled"], false)
+push!(rectselect["enabled"], false)
+
+# draw
+    redraw = draw(c, imagesig, zr, viewdim, recthandle) do cnvs, img, r, vd, rh
+        copy!(cnvs, img) # show image on canvas at current zoom level
+        set_coordinates(cnvs, r) # set canvas coordinates to zr
+        ctx = getgc(cnvs)
+        # draw view diagram if zoomed in
+        if r.fullview != r.currentview
+            drawrect(ctx, vd[1], colorant"blue")
+            drawrect(ctx, vd[2], colorant"blue")
+        end
+        drawrecthandle(ctx, rh, colorant"blue", colorant"white")
+    end
+
+    showall(win);
+
+    append!(c.preserved, [zoom_ctrl, pandrag, rectselect])
 end;
+
 
 init_gui(file::AbstractString) = init_gui(load(file); name=file)
 
