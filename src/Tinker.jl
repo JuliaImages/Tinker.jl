@@ -12,37 +12,14 @@ struct Rectangle
 end
 
 Rectangle() = Rectangle(0,0,-1,-1)
-Base.isempty(R::Rectangle) = R.w < 0 || R.h < 0
+Base.isempty(R::Rectangle) = R.w <= 0 || R.h <= 0
 
 # Creates a Rectangle out of any two points
 function Rectangle(p1::XY,p2::XY)
-    # initialize
-    x,y,w,h = 0,0,-1,-1
-    # find x
-    if p1.x < p2.x
-        x = p1.x
-    elseif p2.x < p1.x
-        x = p2.x
-    else x = 0 end
-    # find y
-    if p1.y < p2.y
-        y = p1.y
-    elseif p2.y < p1.y
-        y = p2.y
-    else y = 0 end
-    # find w and h
-    if abs(p1.x - p2.x) > 0
-        w = abs(p1.x - p2.x)
-    end
-    if abs(p1.y - p2.y) > 0
-        h = abs(p1.y - p2.y)
-    end
-    # update rect
-    if x!=0 && y!=0 && w!=-1 && h!=-1
-        return Rectangle(x,y,w,h)
-    else
-        return Rectangle()
-    end
+    x, w = min(p1.x, p2.x), abs(p2.x - p1.x)
+    y, h = min(p1.y, p2.y), abs(p2.y - p1.y)
+    return Rectangle(x, y, w, h)
+    (p1.x == p2.x) || (p1.y == p2.y) && return Rectangle()
 end
 
 # rectangle draw function
@@ -70,14 +47,14 @@ function Handle(r::Rectangle, pos::String)
                           "trc"=>(r.x+r.w,r.y),"rs"=>(r.x+r.w,r.y+(r.h/2)),
                           "brc"=>(r.x+r.w,r.y+r.h),"bs"=>(r.x+(r.w/2),r.y+r.h),
                           "blc"=>(r.x,r.y+r.h),"ls"=>(r.x,r.y+(r.h/2)))
-    if pos=="tlc" || pos=="ts" || pos=="trc" || pos=="rs" || pos=="brc" ||
-       pos=="bs" || pos=="blc" || pos=="ls"
-        x = position_coord[pos][1]
-        y = position_coord[pos][2]
-        return Handle(r,pos,x,y)
-    else
+    xy = get(position_coord, pos, (-Inf,-Inf))
+    if xy == (-Inf,-Inf)
         println("Not a valid Handle position.")
         return Handle()
+    else
+        x = position_coord[pos][1]
+        y = position_coord[pos][2]
+        return Handle(r,pos,xy[1],xy[2])
     end
 end
 
@@ -94,12 +71,8 @@ end; # like drawrect, but makes x,y refer to center of handle
 
 # Returns true if a handle is clicked
 function is_clicked(pt::XY, handle::Handle)
-    if (handle.x - 5 < pt.x < handle.x + 5) &&
+    return (handle.x - 5 < pt.x < handle.x + 5) &&
         (handle.y - 5 < pt.y < handle.y + 5)
-        return true
-    else
-        return false
-    end
 end
 
 # A rectangle with handles at all 8 positions
@@ -130,44 +103,21 @@ end
 
 # Given a RectHandle and a position, returns the corresponding Handle
 function get_handle(rh::RectHandle, pos::String)
-    if pos == rh.h[1].pos
-        return rh.h[1]
-    elseif pos == rh.h[2].pos
-        return rh.h[2]
-    elseif pos == rh.h[3].pos
-        return rh.h[3]
-    elseif pos == rh.h[4].pos
-        return rh.h[4]
-    elseif pos == rh.h[5].pos
-        return rh.h[5]
-    elseif pos == rh.h[6].pos
-        return rh.h[6]
-    elseif pos == rh.h[7].pos
-        return rh.h[7]
-    elseif pos == rh.h[8].pos
-        return rh.h[8]
-    else
-        println("Not a valid position")
-        return Handle()
+    for i in 1:8
+        pos == rh.h[i].pos && return rh.h[i]
     end
+    println("Not a valid position")
+    return Handle()
 end
 
 # Gets anchor point for modification by handle
 function get_p1(h::Handle, rh::RectHandle)
+    opposite_dict = Dict('b'=>"t", 't'=>"b", 'l'=>"r", 'r'=>"l")
     if h.pos[end] == 'c' # 'h' is a corner
         opp_pos = ""
-        # find first letter of opp_pos
-        if h.pos[1] == 'b'
-            opp_pos *= "t"
-        elseif h.pos[1] == 't'
-            opp_pos *= "b"
-        end
-        # find second letter of opp_pos
-        if h.pos[2] == 'r'
-            opp_pos *= "l"
-        elseif h.pos[2] == 'l'
-            opp_pos *= "r"
-        end
+        # build pos string for opposite corner
+        opp_pos *= opposite_dict[h.pos[1]]
+        opp_pos *= opposite_dict[h.pos[2]]
         opp_pos *= "c"
         # set p1
         opposite = get_handle(rh, opp_pos) # Handle object
@@ -548,11 +498,11 @@ push!(zoom_ctrl["enabled"], false)
         drawrecthandle(ctx, rh, colorant"blue", colorant"white")
     end
 
-    showall(win);
+showall(win);
 
-    append!(c.preserved, [zoom_ctrl, pandrag, rectselect])
+append!(c.preserved, [zoom_ctrl, pandrag, rectselect])
+
 end;
-
 
 init_gui(file::AbstractString) = init_gui(load(file); name=file)
 
