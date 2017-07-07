@@ -2,6 +2,7 @@ using Tinker, Base.Test, TestImages, GtkReactive
 
 # make sure init_gui runs
 Tinker.init_gui(testimage("cameraman.tif"); name="Testing")
+Tinker.set_mode(1)
 
 # Test zoom functions
 test_zr = ZoomRegion((1:10, 1:20))

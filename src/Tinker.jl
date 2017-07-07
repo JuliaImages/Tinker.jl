@@ -477,7 +477,7 @@ function init_gui(image::AbstractArray; name="Tinker")
     rectselect = rect_select(c, rect) # click + drag creates/modifies rect selection
     push!(pandrag["enabled"], false)
     push!(zoom_ctrl["enabled"], false)
-    #push!(rectselect["enabled"], false)
+    push!(rectselect["enabled"], false)
 
     # draw
     redraw = draw(c, imagesig, zr, viewdim, recthandle) do cnvs, img, r, vd, rh
@@ -496,7 +496,8 @@ function init_gui(image::AbstractArray; name="Tinker")
 
     append!(c.preserved, [zoom_ctrl, pandrag, rectselect])
 
-    imagectx = Dict("Image"=>image, "Canvas"=>c, "ZoomRegion"=>zr, "Rectangle"=>rect)
+    imagectx = Dict("Image"=>image, "Canvas"=>c, "ZoomRegion"=>zr,"Rectangle"=>
+                    rect, "MouseActions"=>[pandrag, zoom_ctrl, rectselect])
     push!(img_ctxs, push!(value(img_ctxs), imagectx))
     return imagectx
 end;
@@ -519,6 +520,20 @@ end
 
 yzoom = map(value(active_context)["ZoomRegion"]) do r # hold y zoom level
     r.fullview.y.right/(r.currentview.y.right-(r.currentview.y.left-1))
+end
+
+function set_mode(mode::Int)
+    push!(value(active_context)["MouseActions"][1]["enabled"], false)
+    push!(value(active_context)["MouseActions"][2]["enabled"], false)
+    push!(value(active_context)["MouseActions"][3]["enabled"], false)
+    if mode == 1 # turn on zoom controls
+        println("Zoom mode")
+        push!(value(active_context)["MouseActions"][1]["enabled"], true)
+        push!(value(active_context)["MouseActions"][2]["enabled"], true)
+    elseif mode == 2 # turn on rectangular region selection controls
+        println("Rectangle mode")
+        push!(value(active_context)["MouseActions"][3]["enabled"], true)
+    end
 end
 
 end # module
