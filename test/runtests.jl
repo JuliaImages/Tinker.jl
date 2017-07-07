@@ -15,6 +15,20 @@ push!(sig_zr, Tinker.zoom_percent(1.0, test_zr))
 Reactive.run_till_now()
 @test test_zr == value(sig_zr)
 @test XY(10, 5) == Tinker.find_center(test_zr)
+# Test zoom tracking
+Tinker.zoom_to(sig_zr, 2.3)
+Reactive.run_till_now()
+@test Tinker.zpercents[Tinker.next_zoom(value(sig_zr))] == 2.5
+@test Tinker.zpercents[Tinker.prev_zoom(value(sig_zr))] == 2.0
+Tinker.zoom_to(sig_zr, 2.0)
+Reactive.run_till_now()
+@test Tinker.zpercents[Tinker.next_zoom(value(sig_zr))] == 2.5
+@test Tinker.zpercents[Tinker.prev_zoom(value(sig_zr))] == 1.5
+Tinker.zoom_to(sig_zr, 1.2)
+Reactive.run_till_now()
+@test Tinker.zpercents[Tinker.next_zoom(value(sig_zr))] == 1.5
+@test Tinker.zpercents[Tinker.prev_zoom(value(sig_zr))] == 1.0
+
 
 # Test rectangle select functions
 @test Tinker.Rectangle(XY(5.0, 56.8), XY(23.4, 10.0)) == Tinker.Rectangle(5.0, 10.0, 18.4, 46.8)

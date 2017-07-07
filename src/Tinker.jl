@@ -314,25 +314,29 @@ zpercents = [1.0,1.2,1.5,2.0,2.5,3.0,4.0,8.0]
 global i = 1 # or: const i = Ref(1)
 # Needs to be one i per ctx
 
-function next_zoom()
+function next_zoom{T}(zr::ZoomRegion{T})
+    xzoom = zr.fullview.x.right/(zr.currentview.x.right-
+                                 (zr.currentview.x.left-1))
     index = 1
     for n in zpercents
-        index += 1
-        if n >= value(xzoom)
+        if n > round(xzoom,1)
             break
         end
+        index += 1
     end
     return index
 end
 
 # Returns index of zoom level before current in zpercents
-function prev_zoom()
+function prev_zoom{T}(zr::ZoomRegion{T})
+    xzoom = zr.fullview.x.right/(zr.currentview.x.right-
+                                 (zr.currentview.x.left-1))
     index = length(zpercents)
     for n in zpercents[end:-1:1] # loop backwards
-        index -= 1
-        if n < value(xzoom) 
+        if n < round(xzoom,1)
             break
         end
+        index -= 1
     end
     return index
 end
@@ -346,7 +350,7 @@ function zoom_in{T}(zr::Signal{ZoomRegion{T}}, center::XY{Int})
             push!(zr, zoom_percent(zpercents[i],value(zr),center))
         end
     else
-        i = next_zoom()
+        i = next_zoom(value(zr))
         push!(zr, zoom_percent(zpercents[i],value(zr),center))
     end
 end
@@ -365,7 +369,7 @@ function zoom_out{T}(zr::Signal{ZoomRegion{T}}, center::XY{Int})
             push!(zr, zoom_percent(zpercents[i],value(zr),center))
         end
     else
-        i = prev_zoom()
+        i = prev_zoom(value(zr))
         push!(zr, zoom_percent(zpercents[i],value(zr),center))
     end
 end
@@ -514,6 +518,7 @@ active_context = map(img_ctxs) do ic # signal dependent on img_ctxs
 end
 
 # Signals for active_context
+#=
 xzoom = map(value(active_context)["ZoomRegion"]) do r # holds x zoom level
     r.fullview.x.right/(r.currentview.x.right-(r.currentview.x.left-1))
 end
@@ -521,7 +526,7 @@ end
 yzoom = map(value(active_context)["ZoomRegion"]) do r # hold y zoom level
     r.fullview.y.right/(r.currentview.y.right-(r.currentview.y.left-1))
 end
-
+=#
 function set_mode(mode::Int)
     push!(value(active_context)["MouseActions"][1]["enabled"], false)
     push!(value(active_context)["MouseActions"][2]["enabled"], false)
