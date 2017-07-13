@@ -76,10 +76,9 @@ function Handle(r::Rectangle, pos::String)
 end
 
 # Draws a handle
-function drawhandle(ctx, handle::Handle, color)
+function drawhandle(ctx, handle::Handle, d, color)
     if !isempty(handle)
         set_source(ctx,color)
-        d = 8 # physical dimension of handle
         rectangle(ctx, handle.x-(d/2), handle.y-(d/2),
                   d, d)
         stroke(ctx)
@@ -111,10 +110,10 @@ function RectHandle(r::Rectangle)
 end
 
 # Draws RectHandle
-function drawrecthandle(ctx, rh::RectHandle, color1, color2)
+function drawrecthandle(ctx, rh::RectHandle, d, color1, color2)
     drawrect(ctx, rh.r, color1)
     for n in 1:length(rh.h)
-        drawhandle(ctx, rh.h[n], color2)
+        drawhandle(ctx, rh.h[n], d, color2)
     end
 end
 
@@ -526,7 +525,8 @@ function init_gui(image::AbstractArray; name="Tinker")
             drawrect(ctx, vd[1], colorant"blue")
             drawrect(ctx, vd[2], colorant"blue")
         end
-        drawrecthandle(ctx, rh, colorant"blue", colorant"white")
+        d = 8*(IntervalSets.width(r.currentview.x)/IntervalSets.width(r.fullview.x)) # physical dimension of handle
+        drawrecthandle(ctx, rh, d, colorant"blue", colorant"white")
     end
 
     showall(win);
