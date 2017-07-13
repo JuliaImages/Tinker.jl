@@ -1,8 +1,20 @@
 module Tinker
 
-using Gtk.ShortNames, GtkReactive, Graphics, Colors, Images, TestImages
+using Gtk.ShortNames, GtkReactive, Graphics, Colors, Images, IntervalSets
 
 img_ctxs = Signal([])
+
+mutable struct ImageContext{T}
+    image
+    canvas::GtkReactive.Canvas
+    zr::Signal{ZoomRegion{T}}
+    zl::Int # for tracking zoom level
+    pandrag::Signal{Bool}
+    zoomclick::Signal{Bool}
+    rectselect::Signal{Bool}
+end
+
+ImageContext() = ImageContext(nothing, canvas(), Signal(ZoomRegion((1:10, 1:10))), -1, Signal(false), Signal(false), Signal(false))
 
 ## Generally useful structs and functions
 # Rectangle structure
@@ -310,16 +322,16 @@ function find_center(zr::ZoomRegion)
 end
 
 # Zoom handling
-zpercents = [1.0,1.2,1.5,2.0,2.5,3.0,4.0,8.0]
-global i = 1 # or: const i = Ref(1)
-# Needs to be one i per ctx
+const zpercents = [1.0,1.2,1.5,2.0,2.5,3.0,4.0,8.0]
 
-function next_zoom{T}(zr::ZoomRegion{T})
-    xzoom = zr.fullview.x.right/(zr.currentview.x.right-
-                                 (zr.currentview.x.left-1))
+function next_zoom(ctx)
+    zr = value(ctx.zr)
+    xzoom=IntervalSets.width(zr.fullview.x)/IntervalSets.width(zr.currentview.x)
     index = 1
+    @show xzoom
+    @show floor(xzoom,1)
     for n in zpercents
-        if n > round(xzoom,1)
+        if n > floor(xzoom,1)
             break
         end
         index += 1
@@ -328,12 +340,14 @@ function next_zoom{T}(zr::ZoomRegion{T})
 end
 
 # Returns index of zoom level before current in zpercents
-function prev_zoom{T}(zr::ZoomRegion{T})
-    xzoom = zr.fullview.x.right/(zr.currentview.x.right-
-                                 (zr.currentview.x.left-1))
+function prev_zoom(ctx)
+    zr = value(ctx.zr)
+    xzoom=IntervalSets.width(zr.fullview.x)/IntervalSets.width(zr.currentview.x)
+    @show xzoom
+    @show floor(xzoom,1)
     index = length(zpercents)
     for n in zpercents[end:-1:1] # loop backwards
-        if n < round(xzoom,1)
+        if n < floor(xzoom,1)
             break
         end
         index -= 1
@@ -342,8 +356,9 @@ function prev_zoom{T}(zr::ZoomRegion{T})
 end
 
 # performs proportional zoom in
-function zoom_in{T}(zr::Signal{ZoomRegion{T}}, center::XY{Int})
-    global i
+function zoom_in(ctx, center::XY{Int})
+    i = ctx.zl
+    zr = ctx.zr
     if 1 <= i <= length(zpercents)
         if i < length(zpercents)
             i += 1
@@ -353,16 +368,19 @@ function zoom_in{T}(zr::Signal{ZoomRegion{T}}, center::XY{Int})
         i = next_zoom(value(zr))
         push!(zr, zoom_percent(zpercents[i],value(zr),center))
     end
+    ctx.zl = i
+    ctx.zr = zr
 end
 
 # Automatically centered zoom_in
-function zoom_in{T}(zr::Signal{ZoomRegion{T}})
-    zoom_in(zr, find_center(value(zr)))
+function zoom_in(ctx)
+    zoom_in(ctx, find_center(value(ctx.zr)))
 end
 
 # Performs proportional zoom out; centers on given XY
-function zoom_out{T}(zr::Signal{ZoomRegion{T}}, center::XY{Int})
-    global i
+function zoom_out(ctx, center::XY{Int})
+    i = ctx.zl
+    zr = ctx.zr
     if 1 <= i <= length(zpercents)
         if i > 1
             i -= 1
@@ -372,24 +390,26 @@ function zoom_out{T}(zr::Signal{ZoomRegion{T}}, center::XY{Int})
         i = prev_zoom(value(zr))
         push!(zr, zoom_percent(zpercents[i],value(zr),center))
     end
+    ctx.zl = i
+    ctx.zr = zr
 end
 
 # Automatically centered zoom_out
-function zoom_out{T}(zr::Signal{ZoomRegion{T}})
-    zoom_out(zr, find_center(value(zr)))
+function zoom_out(ctx)
+    zoom_out(ctx, find_center(value(ctx.zr)))
 end
 
 # performs proportional, centered zoom to level entered
-function zoom_to{T}(zr::Signal{ZoomRegion{T}}, z::Float64)
-    global i
-    i = -1
-    push!(zr, zoom_percent(z,value(zr)))
+function zoom_to(ctx, z::Float64)
+    ctx.zl = -1
+    push!(ctx.zr, zoom_percent(z,value(ctx.zr)))
     nothing
 end
 
 # Mouse actions for zoom
-function zoom_clicked{T}(c::GtkReactive.Canvas,
-                         zr::Signal{ZoomRegion{T}})
+function init_zoom_click(ctx)
+    c = ctx.canvas
+    zr = ctx.zr
     enabled = Signal(true)
     # Left click calls zoom_in() centered on pixel clicked
     # Right click calls zoom_out() centered on pixel clicked
@@ -418,11 +438,11 @@ function zoom_clicked{T}(c::GtkReactive.Canvas,
             if btn.button == 1 && btn.modifiers == 256 #if left click & no modifiers
                 center = XY(Int(round(Float64(btn.position.x))),
                             Int(round(Float64(btn.position.y))))
-                zoom_in(zr, center) 
+                zoom_in(ctx, center) 
             elseif btn.button == 3 || btn.modifiers == 260 # right click/ctrl
                 center = XY(Int(round(Float64(btn.position.x))),
                             Int(round(Float64(btn.position.y))))
-                zoom_out(zr, center)
+                zoom_out(ctx, center)
             end
         end
         push!(dragging,false) # no longer dragging
@@ -475,14 +495,6 @@ function init_gui(image::AbstractArray; name="Tinker")
         RectHandle(r)
     end
 
-    # mouse actions
-    pandrag = init_pan_drag(c, zr) # dragging moves image
-    zoom_ctrl = zoom_clicked(c, zr) # clicking zooms image
-    rectselect = rect_select(c, rect) # click + drag creates/modifies rect selection
-    push!(pandrag["enabled"], false)
-    push!(zoom_ctrl["enabled"], false)
-    push!(rectselect["enabled"], false)
-
     # draw
     redraw = draw(c, imagesig, zr, viewdim, recthandle) do cnvs, img, r, vd, rh
         copy!(cnvs, img) # show image on canvas at current zoom level
@@ -498,10 +510,21 @@ function init_gui(image::AbstractArray; name="Tinker")
 
     showall(win);
 
-    append!(c.preserved, [zoom_ctrl, pandrag, rectselect])
-
-    imagectx = Dict("Image"=>image, "Canvas"=>c, "ZoomRegion"=>zr,"Rectangle"=>
-                    rect, "MouseActions"=>[pandrag, zoom_ctrl, rectselect])
+    #Context
+    imagectx = ImageContext(image, c, zr, 1, Signal(false), Signal(false),
+                            Signal(false))
+    
+    # Mouse actions
+    pandrag = init_pan_drag(c, zr) # dragging moves image
+    zoomclick = init_zoom_click(imagectx) # clicking zooms image
+    rectselect = rect_select(c, rect) # click + drag modifies rect selection
+    
+    imagectx.pandrag = pandrag["enabled"]
+    imagectx.zoomclick = zoomclick["enabled"]
+    imagectx.rectselect = rectselect["enabled"]
+    
+    append!(c.preserved, [zoomclick, pandrag, rectselect])
+    
     push!(img_ctxs, push!(value(img_ctxs), imagectx))
     return imagectx
 end;
@@ -511,33 +534,23 @@ init_gui(file::AbstractString) = init_gui(load(file); name=file)
 active_context = map(img_ctxs) do ic # signal dependent on img_ctxs
     if isempty(ic)
         # placeholder value of appropriate type
-        init_gui(testimage("lighthouse")) # find a better placeholder
+        ImageContext()
     else
         ic[end] # currently gets last element of img_ctxs
     end
 end
 
-# Signals for active_context
-#=
-xzoom = map(value(active_context)["ZoomRegion"]) do r # holds x zoom level
-    r.fullview.x.right/(r.currentview.x.right-(r.currentview.x.left-1))
-end
-
-yzoom = map(value(active_context)["ZoomRegion"]) do r # hold y zoom level
-    r.fullview.y.right/(r.currentview.y.right-(r.currentview.y.left-1))
-end
-=#
-function set_mode(mode::Int)
-    push!(value(active_context)["MouseActions"][1]["enabled"], false)
-    push!(value(active_context)["MouseActions"][2]["enabled"], false)
-    push!(value(active_context)["MouseActions"][3]["enabled"], false)
+function set_mode(ctx, mode::Int)
+    push!(ctx.pandrag, false)
+    push!(ctx.zoomclick, false)
+    push!(ctx.rectselect, false)
     if mode == 1 # turn on zoom controls
         println("Zoom mode")
-        push!(value(active_context)["MouseActions"][1]["enabled"], true)
-        push!(value(active_context)["MouseActions"][2]["enabled"], true)
+        push!(ctx.pandrag, true)
+        push!(ctx.zoomclick, true)
     elseif mode == 2 # turn on rectangular region selection controls
         println("Rectangle mode")
-        push!(value(active_context)["MouseActions"][3]["enabled"], true)
+        push!(ctx.rectselect, true)
     end
 end
 
