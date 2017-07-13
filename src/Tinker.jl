@@ -8,10 +8,10 @@ abstract type Shape end
 
 # Rectangle structure
 struct Rectangle <: Shape
-    x::Float64
-    y::Float64
-    w::Float64
-    h::Float64
+    x::Number
+    y::Number
+    w::Number
+    h::Number
 end
 
 Rectangle() = Rectangle(0,0,-1,-1)
@@ -26,9 +26,10 @@ mutable struct ImageContext{T}
     zoomclick::Signal{Bool}
     rectselect::Signal{Bool}
     shape::Signal{Rectangle} # Holds selection outline
+    rectview # holds rectangular region corresponding to outline (type?)
 end
 
-ImageContext() = ImageContext(nothing, canvas(), Signal(ZoomRegion((1:10, 1:10))), -1, Signal(false), Signal(false), Signal(false), Signal(Rectangle()))
+ImageContext() = ImageContext(nothing, canvas(), Signal(ZoomRegion((1:10, 1:10))), -1, Signal(false), Signal(false), Signal(false), Signal(Rectangle()), Signal([]))
 
 # Creates a Rectangle out of any two points
 function Rectangle(p1::XY,p2::XY)
@@ -249,7 +250,10 @@ function init_rect_select(ctx::ImageContext)
         if value(modifying)
             if !isempty(value(modhandle))
                 push!(p2, get_p2(value(modhandle), value(recthandle), btn))
-                push!(rect, Rectangle(XY(Float64(value(p1).x), Float64(value(p1).y)), XY(Float64(value(p2).x), Float64(value(p2).y)))) #make better
+                push!(rect, Rectangle(XY(Float64(value(p1).x),
+                                         Float64(value(p1).y)),
+                                      XY(Float64(value(p2).x),
+                                         Float64(value(p2).y))))
             elseif value(locmod) # if modifying the location
                 # move rectangle
                 w = value(rect).w
@@ -260,7 +264,8 @@ function init_rect_select(ctx::ImageContext)
             # If we are building a new rectangle:
         else
             push!(p2,btn.position)
-            push!(rect, Rectangle(XY(Float64(value(p1).x), Float64(value(p1).y)), XY(Float64(value(p2).x), Float64(value(p2).y)))) #make better
+            push!(rect,Rectangle(XY(Float64(value(p1).x),Float64(value(p1).y)),
+                                 XY(Float64(value(p2).x),Float64(value(p2).y))))
         end
         nothing
     end
@@ -274,7 +279,8 @@ function init_rect_select(ctx::ImageContext)
             # End build actions
         elseif !isempty(value(recthandle))
             push!(p2,btn.position)
-            push!(rect, Rectangle(XY(Float64(value(p1).x), Float64(value(p1).y)), XY(Float64(value(p2).x), Float64(value(p2).y)))) #make better
+            push!(rect,Rectangle(XY(Float64(value(p1).x),Float64(value(p1).y)),
+                                 XY(Float64(value(p2).x),Float64(value(p2).y))))
         end
         nothing
     end
@@ -495,6 +501,20 @@ function init_gui(image::AbstractArray; name="Tinker")
     recthandle = map(rect) do r
         RectHandle(r)
     end
+    # Holds view enclosed by rectangle
+    rectview = map(rect) do r
+        if isempty(r)
+            view(image, 1:size(image,1), 1:size(image,2))
+        else
+            xleft,xright = Int(floor(r.x)),Int(floor(r.x+r.w))
+            yleft,yright = Int(floor(r.y)),Int(floor(r.y+r.h))
+            (xleft < 1) && (xleft = 1)
+            (yleft < 1) && (yleft = 1)
+            (xright > size(image,2)) && (xright = size(image,2))
+            (yright > size(image,1)) && (yright = size(image,1))
+            view(image, yleft:yright, xleft:xright)
+        end
+    end
 
     # draw
     redraw = draw(c, imagesig, zr, viewdim, recthandle) do cnvs, img, r, vd, rh
@@ -513,7 +533,7 @@ function init_gui(image::AbstractArray; name="Tinker")
 
     # Context
     imagectx = ImageContext(image, c, zr, 1, Signal(false), Signal(false),
-                            Signal(false), rect)
+                            Signal(false), rect, rectview)
     
     # Mouse actions
     pandrag = init_pan_drag(c, zr) # dragging moves image
