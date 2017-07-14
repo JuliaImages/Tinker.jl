@@ -313,7 +313,7 @@ function zoom_percent(z::Float64, zr::ZoomRegion, center::XY{Int})
         offset = XY(x, fsize.y-csize.y)
     end
     
-    return (offset.y+1:offset.y+csize.y, offset.x+1:offset.x+csize.x)
+    return (offset.y+1..offset.y+csize.y, offset.x+1..offset.x+csize.x)
 end # return value can be pushed to a zr
 
 # Sets default center to be the middle of the cv
@@ -331,15 +331,28 @@ function find_center(zr::ZoomRegion)
     return center
 end
 
-# Zoom handling
+# Zoom tracking
 const zpercents = [1.0,1.2,1.5,2.0,2.5,3.0,4.0,8.0]
 
+# For a given zoom region, finds the level that zoom_percent actually zooms to,
+# for every item in zpercents. Used in zoom tracking.
+function actual_zpercents_x(zr::ZoomRegion)
+    levels = zoom_percent.(zpercents, zr) #returns an array of tuples
+    zp_actual = []
+    for i in 1:length(levels)
+        push!(zp_actual, IntervalSets.width(zr.fullview.x)/
+              IntervalSets.width(levels[i][2]))
+    end
+    return zp_actual
+end
+
+# Returns index of next zoom level after current zoom level in zpercents.
 function next_zoom(ctx::ImageContext)
-    zr = value(ctx.zr)
-    xzoom=IntervalSets.width(zr.fullview.x)/IntervalSets.width(zr.currentview.x)
+    xzoom=IntervalSets.width(value(ctx.zr).fullview.x)/IntervalSets.width(value(ctx.zr).currentview.x)
+    zp_actual = actual_zpercents_x(value(ctx.zr))
     index = 1
-    for n in zpercents
-        if n > floor(xzoom,1)
+    for n in zp_actual
+        if n > xzoom
             break
         end
         index += 1
@@ -347,13 +360,14 @@ function next_zoom(ctx::ImageContext)
     return index
 end
 
-# Returns index of zoom level before current in zpercents
+# Returns index of zoom level before current in zpercents.
 function prev_zoom(ctx::ImageContext)
     zr = value(ctx.zr)
     xzoom=IntervalSets.width(zr.fullview.x)/IntervalSets.width(zr.currentview.x)
+    zp_actual = actual_zpercents_x(value(ctx.zr))
     index = length(zpercents)
-    for n in zpercents[end:-1:1] # loop backwards
-        if n < floor(xzoom,1)
+    for n in zp_actual[end:-1:1] # loop backwards
+        if n < xzoom
             break
         end
         index -= 1
@@ -361,7 +375,7 @@ function prev_zoom(ctx::ImageContext)
     return index
 end
 
-# performs proportional zoom in
+# Performs proportional zoom in and tracks zoom level using zpercents.
 function zoom_in(ctx::ImageContext, center::XY{Int})
     i = ctx.zl
     zr = ctx.zr
@@ -383,7 +397,7 @@ function zoom_in(ctx::ImageContext)
     zoom_in(ctx, find_center(value(ctx.zr)))
 end
 
-# Performs proportional zoom out; centers on given XY
+# Performs proportional zoom out and tracks zoom level using zpercents.
 function zoom_out(ctx::ImageContext, center::XY{Int})
     i = ctx.zl
     zr = ctx.zr
@@ -405,7 +419,7 @@ function zoom_out(ctx::ImageContext)
     zoom_out(ctx, find_center(value(ctx.zr)))
 end
 
-# performs proportional, centered zoom to level entered
+# Performs proportional, centered zoom to level entered
 function zoom_to(ctx::ImageContext, z::Float64)
     ctx.zl = -1
     push!(ctx.zr, zoom_percent(z,value(ctx.zr)))

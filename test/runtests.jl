@@ -7,7 +7,7 @@ Tinker.set_mode(value(Tinker.active_context), 1)
 rselection = value(Tinker.active_context).rectview # current selected region
 
 # Test zoom functions
-test_zr = ZoomRegion((1:10, 1:20))
+test_zr = ZoomRegion((1:100, 1:200))
 sig_zr = Signal(test_zr)
 push!(sig_zr, Tinker.zoom_percent(1.8, test_zr))
 Reactive.run_till_now()
@@ -16,7 +16,7 @@ Reactive.run_till_now()
 push!(sig_zr, Tinker.zoom_percent(1.0, test_zr))
 Reactive.run_till_now()
 @test test_zr == value(sig_zr)
-@test XY(10, 5) == Tinker.find_center(test_zr)
+@test XY(100, 50) == Tinker.find_center(test_zr)
 # Test zoom tracking
 test_ctx = Tinker.ImageContext()
 test_ctx.zr = sig_zr
@@ -27,10 +27,10 @@ Reactive.run_till_now()
 Tinker.zoom_to(test_ctx, 2.0)
 Reactive.run_till_now()
 @test Tinker.zpercents[Tinker.next_zoom(test_ctx)] == 2.5
-#@test Tinker.zpercents[Tinker.prev_zoom(test_ctx)] == 1.5
+@test Tinker.zpercents[Tinker.prev_zoom(test_ctx)] == 1.5
 Tinker.zoom_to(test_ctx, 1.2)
 Reactive.run_till_now()
-#@test Tinker.zpercents[Tinker.next_zoom(test_ctx)] == 1.5
+@test Tinker.zpercents[Tinker.next_zoom(test_ctx)] == 1.5
 @test Tinker.zpercents[Tinker.prev_zoom(test_ctx)] == 1.0
 
 # Test rectangle select functions
