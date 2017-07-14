@@ -433,9 +433,8 @@ function init_zoom_click(ctx::ImageContext)
     end
 
     sigdrag = map(filterwhen(dragging, dummybtn, c.mouse.motion)) do btn
-        # modify this so it only pushes if the view actually shifted
-        # (fractions of pixels don't cause view to move)
-        push!(moved,true)
+        value(start_view) != value(zr) && push!(moved,true)
+        nothing
     end
 
     sigend = map(filterwhen(dragging,dummybtn,c.mouse.buttonrelease)) do btn
