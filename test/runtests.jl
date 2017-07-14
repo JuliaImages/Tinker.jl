@@ -3,7 +3,7 @@ using Tinker, Base.Test, TestImages, GtkReactive
 # make sure init_gui runs
 Tinker.init_gui(testimage("cameraman.tif"); name="Testing")
 Reactive.run_till_now()
-Tinker.set_mode(value(Tinker.active_context), 1)
+Tinker.set_mode(value(Tinker.active_context), 2)
 rselection = value(Tinker.active_context).rectview # current selected region
 
 # Test zoom functions
@@ -61,15 +61,16 @@ btn7 = fake_buttonpress(XY{UserUnit}(recth.h[7].x+0.1, recth.h[7].y-0.2))
 btn8 = fake_buttonpress(XY{UserUnit}(recth.h[8].x+0.1, recth.h[8].y-0.2))
 btn9 = fake_buttonpress(XY{UserUnit}(40.5, 80.2))
 # Test is_clicked
-@test Tinker.is_clicked(btn1.position, recth.h[1])
-@test Tinker.is_clicked(btn2.position, recth.h[2])
-@test Tinker.is_clicked(btn3.position, recth.h[3])
-@test Tinker.is_clicked(btn4.position, recth.h[4])
-@test Tinker.is_clicked(btn5.position, recth.h[5])
-@test Tinker.is_clicked(btn6.position, recth.h[6])
-@test Tinker.is_clicked(btn7.position, recth.h[7])
-@test Tinker.is_clicked(btn8.position, recth.h[8])
-@test !Tinker.is_clicked(btn9.position, recth.h[1])
+d = 8*(IntervalSets.width(test_zr.currentview.x)/IntervalSets.width(test_zr.fullview.x))
+@test Tinker.is_clicked(btn1.position, recth.h[1],d)
+@test Tinker.is_clicked(btn2.position, recth.h[2],d)
+@test Tinker.is_clicked(btn3.position, recth.h[3],d)
+@test Tinker.is_clicked(btn4.position, recth.h[4],d)
+@test Tinker.is_clicked(btn5.position, recth.h[5],d)
+@test Tinker.is_clicked(btn6.position, recth.h[6],d)
+@test Tinker.is_clicked(btn7.position, recth.h[7],d)
+@test Tinker.is_clicked(btn8.position, recth.h[8],d)
+@test !Tinker.is_clicked(btn9.position, recth.h[1],d)
 # Test get_p2
 @test XY{UserUnit}(btn1.position.x, btn1.position.y) ==
     Tinker.get_p2(recth.h[1], recth, btn1)

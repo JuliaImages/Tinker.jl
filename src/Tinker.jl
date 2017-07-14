@@ -40,8 +40,9 @@ function Rectangle(p1::XY,p2::XY)
 end
 
 # rectangle draw function
-function drawrect(ctx, rect, color)
+function drawrect(ctx, rect, color, width)
     set_source(ctx, color)
+    set_line_width(ctx, width)
     rectangle(ctx, rect.x, rect.y, rect.w, rect.h)
     stroke(ctx)
 end;
@@ -76,19 +77,22 @@ function Handle(r::Rectangle, pos::String)
 end
 
 # Draws a handle
-function drawhandle(ctx, handle::Handle, d, color)
+function drawhandle(ctx, handle::Handle, d)
     if !isempty(handle)
-        set_source(ctx,color)
         rectangle(ctx, handle.x-(d/2), handle.y-(d/2),
                   d, d)
-        stroke(ctx)
+        set_source(ctx,colorant"white")
+        fill_preserve(ctx)
+        set_source(ctx,colorant"black")
+        set_line_width(ctx,1.0)
+        stroke_preserve(ctx)
     end
 end; # like drawrect, but makes x,y refer to center of handle
 
 # Returns true if a handle is clicked
-function is_clicked(pt::XY, handle::Handle)
-    return (handle.x - 5 < pt.x < handle.x + 5) &&
-        (handle.y - 5 < pt.y < handle.y + 5)
+function is_clicked(pt::XY, handle::Handle, d)
+    return (handle.x - d/2 < pt.x < handle.x + d/2) &&
+        (handle.y - d/2 < pt.y < handle.y + d/2)
 end
 
 # A rectangle with handles at all 8 positions
@@ -110,10 +114,10 @@ function RectHandle(r::Rectangle)
 end
 
 # Draws RectHandle
-function drawrecthandle(ctx, rh::RectHandle, d, color1, color2)
-    drawrect(ctx, rh.r, color1)
+function drawrecthandle(ctx, rh::RectHandle, d, color1, width)
+    drawrect(ctx, rh.r, color1, width)
     for n in 1:length(rh.h)
-        drawhandle(ctx, rh.h[n], d, color2)
+        drawhandle(ctx, rh.h[n], d)
     end
 end
 
@@ -211,8 +215,9 @@ function init_rect_select(ctx::ImageContext)
             push!(modifying,true)
             # Identify if click is inside handle
             current = Handle()
+            d = 8*(IntervalSets.width(value(ctx.zr).currentview.x)/IntervalSets.width(value(ctx.zr).fullview.x)) # physical dimension of handle
             for n in 1:length(value(recthandle).h)
-                if is_clicked(btn.position, value(recthandle).h[n])
+                if is_clicked(btn.position, value(recthandle).h[n], d)
                     current = value(recthandle).h[n]
                     push!(modhandle, current)
                     break
@@ -535,11 +540,11 @@ function init_gui(image::AbstractArray; name="Tinker")
         ctx = getgc(cnvs)
         # draw view diagram if zoomed in
         if r.fullview != r.currentview
-            drawrect(ctx, vd[1], colorant"blue")
-            drawrect(ctx, vd[2], colorant"blue")
+            drawrect(ctx, vd[1], colorant"blue", 2.0)
+            drawrect(ctx, vd[2], colorant"blue", 2.0)
         end
         d = 8*(IntervalSets.width(r.currentview.x)/IntervalSets.width(r.fullview.x)) # physical dimension of handle
-        drawrecthandle(ctx, rh, d, colorant"blue", colorant"white")
+        drawrecthandle(ctx, rh, d, colorant"blue", 1.0)
     end
 
     showall(win);
