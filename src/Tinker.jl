@@ -25,8 +25,8 @@ mutable struct ImageContext{T}
     pandrag::Signal{Bool}
     zoomclick::Signal{Bool}
     rectselect::Signal{Bool}
-    shape::Signal{Rectangle} # Holds selection outline
-    rectview # holds rectangular region corresponding to outline (type?)
+    shape::Signal{<:Shape} # Holds selection outline
+    rectview::Signal{<:AbstractArray} # holds rectangular region corresponding to outline (type?)
 end
 
 ImageContext() = ImageContext(nothing, canvas(), Signal(ZoomRegion((1:10, 1:10))), -1, Signal(false), Signal(false), Signal(false), Signal(Rectangle()), Signal([]))
