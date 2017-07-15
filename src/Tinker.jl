@@ -4,6 +4,19 @@ using Gtk.ShortNames, GtkReactive, Graphics, Colors, Images, IntervalSets
 
 img_ctxs = Signal([])
 
+abstract type Shape end
+
+# Rectangle structure
+struct Rectangle <: Shape
+    x::Number
+    y::Number
+    w::Number
+    h::Number
+end
+
+Rectangle() = Rectangle(0,0,-1,-1)
+Base.isempty(R::Rectangle) = R.w <= 0 || R.h <= 0
+
 mutable struct ImageContext{T}
     image
     canvas::GtkReactive.Canvas
@@ -12,21 +25,11 @@ mutable struct ImageContext{T}
     pandrag::Signal{Bool}
     zoomclick::Signal{Bool}
     rectselect::Signal{Bool}
+    shape::Signal{<:Shape} # Holds selection outline
+    rectview::Signal{<:AbstractArray} # holds rectangular region corresponding to outline (type?)
 end
 
-ImageContext() = ImageContext(nothing, canvas(), Signal(ZoomRegion((1:10, 1:10))), -1, Signal(false), Signal(false), Signal(false))
-
-## Generally useful structs and functions
-# Rectangle structure
-struct Rectangle
-    x::Float64
-    y::Float64
-    w::Float64
-    h::Float64
-end
-
-Rectangle() = Rectangle(0,0,-1,-1)
-Base.isempty(R::Rectangle) = R.w <= 0 || R.h <= 0
+ImageContext() = ImageContext(nothing, canvas(), Signal(ZoomRegion((1:10, 1:10))), -1, Signal(false), Signal(false), Signal(false), Signal(Rectangle()), Signal([]))
 
 # Creates a Rectangle out of any two points
 function Rectangle(p1::XY,p2::XY)
@@ -37,8 +40,9 @@ function Rectangle(p1::XY,p2::XY)
 end
 
 # rectangle draw function
-function drawrect(ctx, rect, color)
+function drawrect(ctx, rect, color, width)
     set_source(ctx, color)
+    set_line_width(ctx, width)
     rectangle(ctx, rect.x, rect.y, rect.w, rect.h)
     stroke(ctx)
 end;
@@ -73,20 +77,22 @@ function Handle(r::Rectangle, pos::String)
 end
 
 # Draws a handle
-function drawhandle(ctx, handle::Handle, color)
+function drawhandle(ctx, handle::Handle, d)
     if !isempty(handle)
-        set_source(ctx,color)
-        d = 8 # physical dimension of handle
         rectangle(ctx, handle.x-(d/2), handle.y-(d/2),
                   d, d)
-        stroke(ctx)
+        set_source(ctx,colorant"white")
+        fill_preserve(ctx)
+        set_source(ctx,colorant"black")
+        set_line_width(ctx,1.0)
+        stroke_preserve(ctx)
     end
 end; # like drawrect, but makes x,y refer to center of handle
 
 # Returns true if a handle is clicked
-function is_clicked(pt::XY, handle::Handle)
-    return (handle.x - 5 < pt.x < handle.x + 5) &&
-        (handle.y - 5 < pt.y < handle.y + 5)
+function is_clicked(pt::XY, handle::Handle, d)
+    return (handle.x - d/2 < pt.x < handle.x + d/2) &&
+        (handle.y - d/2 < pt.y < handle.y + d/2)
 end
 
 # A rectangle with handles at all 8 positions
@@ -108,10 +114,10 @@ function RectHandle(r::Rectangle)
 end
 
 # Draws RectHandle
-function drawrecthandle(ctx, rh::RectHandle, color1, color2)
-    drawrect(ctx, rh.r, color1)
+function drawrecthandle(ctx, rh::RectHandle, d, color1, width)
+    drawrect(ctx, rh.r, color1, width)
     for n in 1:length(rh.h)
-        drawhandle(ctx, rh.h[n], color2)
+        drawhandle(ctx, rh.h[n], d)
     end
 end
 
@@ -183,7 +189,10 @@ function get_p2(h::Handle, rh::RectHandle, btn)
 end
 
 # Mouse actions for rectangular selection creation and modification
-function rect_select(c::GtkReactive.Canvas, rect::Signal{Rectangle})
+function init_rect_select(ctx::ImageContext)
+    c = ctx.canvas
+    rect = ctx.shape
+    
     recthandle = map(rect) do r
          RectHandle(r)
     end
@@ -206,8 +215,9 @@ function rect_select(c::GtkReactive.Canvas, rect::Signal{Rectangle})
             push!(modifying,true)
             # Identify if click is inside handle
             current = Handle()
+            d = 8*(IntervalSets.width(value(ctx.zr).currentview.x)/IntervalSets.width(value(ctx.zr).fullview.x)) # physical dimension of handle
             for n in 1:length(value(recthandle).h)
-                if is_clicked(btn.position, value(recthandle).h[n])
+                if is_clicked(btn.position, value(recthandle).h[n], d)
                     current = value(recthandle).h[n]
                     push!(modhandle, current)
                     break
@@ -244,7 +254,10 @@ function rect_select(c::GtkReactive.Canvas, rect::Signal{Rectangle})
         if value(modifying)
             if !isempty(value(modhandle))
                 push!(p2, get_p2(value(modhandle), value(recthandle), btn))
-                push!(rect, Rectangle(XY(Float64(value(p1).x), Float64(value(p1).y)), XY(Float64(value(p2).x), Float64(value(p2).y)))) #make better
+                push!(rect, Rectangle(XY(Float64(value(p1).x),
+                                         Float64(value(p1).y)),
+                                      XY(Float64(value(p2).x),
+                                         Float64(value(p2).y))))
             elseif value(locmod) # if modifying the location
                 # move rectangle
                 w = value(rect).w
@@ -255,7 +268,8 @@ function rect_select(c::GtkReactive.Canvas, rect::Signal{Rectangle})
             # If we are building a new rectangle:
         else
             push!(p2,btn.position)
-            push!(rect, Rectangle(XY(Float64(value(p1).x), Float64(value(p1).y)), XY(Float64(value(p2).x), Float64(value(p2).y)))) #make better
+            push!(rect,Rectangle(XY(Float64(value(p1).x),Float64(value(p1).y)),
+                                 XY(Float64(value(p2).x),Float64(value(p2).y))))
         end
         nothing
     end
@@ -269,7 +283,8 @@ function rect_select(c::GtkReactive.Canvas, rect::Signal{Rectangle})
             # End build actions
         elseif !isempty(value(recthandle))
             push!(p2,btn.position)
-            push!(rect, Rectangle(XY(Float64(value(p1).x), Float64(value(p1).y)), XY(Float64(value(p2).x), Float64(value(p2).y)))) #make better
+            push!(rect,Rectangle(XY(Float64(value(p1).x),Float64(value(p1).y)),
+                                 XY(Float64(value(p2).x),Float64(value(p2).y))))
         end
         nothing
     end
@@ -303,7 +318,7 @@ function zoom_percent(z::Float64, zr::ZoomRegion, center::XY{Int})
         offset = XY(x, fsize.y-csize.y)
     end
     
-    return (offset.y+1:offset.y+csize.y, offset.x+1:offset.x+csize.x)
+    return (offset.y+1..offset.y+csize.y, offset.x+1..offset.x+csize.x)
 end # return value can be pushed to a zr
 
 # Sets default center to be the middle of the cv
@@ -321,17 +336,28 @@ function find_center(zr::ZoomRegion)
     return center
 end
 
-# Zoom handling
+# Zoom tracking
 const zpercents = [1.0,1.2,1.5,2.0,2.5,3.0,4.0,8.0]
 
-function next_zoom(ctx)
-    zr = value(ctx.zr)
-    xzoom=IntervalSets.width(zr.fullview.x)/IntervalSets.width(zr.currentview.x)
+# For a given zoom region, finds the level that zoom_percent actually zooms to,
+# for every item in zpercents. Used in zoom tracking.
+function actual_zpercents_x(zr::ZoomRegion)
+    levels = zoom_percent.(zpercents, zr) #returns an array of tuples
+    zp_actual = []
+    for i in 1:length(levels)
+        push!(zp_actual, IntervalSets.width(zr.fullview.x)/
+              IntervalSets.width(levels[i][2]))
+    end
+    return zp_actual
+end
+
+# Returns index of next zoom level after current zoom level in zpercents.
+function next_zoom(ctx::ImageContext)
+    xzoom=IntervalSets.width(value(ctx.zr).fullview.x)/IntervalSets.width(value(ctx.zr).currentview.x)
+    zp_actual = actual_zpercents_x(value(ctx.zr))
     index = 1
-    @show xzoom
-    @show floor(xzoom,1)
-    for n in zpercents
-        if n > floor(xzoom,1)
+    for n in zp_actual
+        if n > xzoom
             break
         end
         index += 1
@@ -339,15 +365,14 @@ function next_zoom(ctx)
     return index
 end
 
-# Returns index of zoom level before current in zpercents
-function prev_zoom(ctx)
+# Returns index of zoom level before current in zpercents.
+function prev_zoom(ctx::ImageContext)
     zr = value(ctx.zr)
     xzoom=IntervalSets.width(zr.fullview.x)/IntervalSets.width(zr.currentview.x)
-    @show xzoom
-    @show floor(xzoom,1)
+    zp_actual = actual_zpercents_x(value(ctx.zr))
     index = length(zpercents)
-    for n in zpercents[end:-1:1] # loop backwards
-        if n < floor(xzoom,1)
+    for n in zp_actual[end:-1:1] # loop backwards
+        if n < xzoom
             break
         end
         index -= 1
@@ -355,8 +380,8 @@ function prev_zoom(ctx)
     return index
 end
 
-# performs proportional zoom in
-function zoom_in(ctx, center::XY{Int})
+# Performs proportional zoom in and tracks zoom level using zpercents.
+function zoom_in(ctx::ImageContext, center::XY{Int})
     i = ctx.zl
     zr = ctx.zr
     if 1 <= i <= length(zpercents)
@@ -373,12 +398,12 @@ function zoom_in(ctx, center::XY{Int})
 end
 
 # Automatically centered zoom_in
-function zoom_in(ctx)
+function zoom_in(ctx::ImageContext)
     zoom_in(ctx, find_center(value(ctx.zr)))
 end
 
-# Performs proportional zoom out; centers on given XY
-function zoom_out(ctx, center::XY{Int})
+# Performs proportional zoom out and tracks zoom level using zpercents.
+function zoom_out(ctx::ImageContext, center::XY{Int})
     i = ctx.zl
     zr = ctx.zr
     if 1 <= i <= length(zpercents)
@@ -395,19 +420,19 @@ function zoom_out(ctx, center::XY{Int})
 end
 
 # Automatically centered zoom_out
-function zoom_out(ctx)
+function zoom_out(ctx::ImageContext)
     zoom_out(ctx, find_center(value(ctx.zr)))
 end
 
-# performs proportional, centered zoom to level entered
-function zoom_to(ctx, z::Float64)
+# Performs proportional, centered zoom to level entered
+function zoom_to(ctx::ImageContext, z::Float64)
     ctx.zl = -1
     push!(ctx.zr, zoom_percent(z,value(ctx.zr)))
     nothing
 end
 
 # Mouse actions for zoom
-function init_zoom_click(ctx)
+function init_zoom_click(ctx::ImageContext)
     c = ctx.canvas
     zr = ctx.zr
     enabled = Signal(true)
@@ -427,9 +452,8 @@ function init_zoom_click(ctx)
     end
 
     sigdrag = map(filterwhen(dragging, dummybtn, c.mouse.motion)) do btn
-        # modify this so it only pushes if the view actually shifted
-        # (fractions of pixels don't cause view to move)
-        push!(moved,true)
+        value(start_view) != value(zr) && push!(moved,true)
+        nothing
     end
 
     sigend = map(filterwhen(dragging,dummybtn,c.mouse.buttonrelease)) do btn
@@ -494,6 +518,20 @@ function init_gui(image::AbstractArray; name="Tinker")
     recthandle = map(rect) do r
         RectHandle(r)
     end
+    # Holds view enclosed by rectangle
+    rectview = map(rect) do r
+        if isempty(r)
+            view(image, 1:size(image,1), 1:size(image,2))
+        else
+            xleft,xright = Int(floor(r.x)),Int(floor(r.x+r.w))
+            yleft,yright = Int(floor(r.y)),Int(floor(r.y+r.h))
+            (xleft < 1) && (xleft = 1)
+            (yleft < 1) && (yleft = 1)
+            (xright > size(image,2)) && (xright = size(image,2))
+            (yright > size(image,1)) && (yright = size(image,1))
+            view(image, yleft:yright, xleft:xright)
+        end
+    end
 
     # draw
     redraw = draw(c, imagesig, zr, viewdim, recthandle) do cnvs, img, r, vd, rh
@@ -502,22 +540,23 @@ function init_gui(image::AbstractArray; name="Tinker")
         ctx = getgc(cnvs)
         # draw view diagram if zoomed in
         if r.fullview != r.currentview
-            drawrect(ctx, vd[1], colorant"blue")
-            drawrect(ctx, vd[2], colorant"blue")
+            drawrect(ctx, vd[1], colorant"blue", 2.0)
+            drawrect(ctx, vd[2], colorant"blue", 2.0)
         end
-        drawrecthandle(ctx, rh, colorant"blue", colorant"white")
+        d = 8*(IntervalSets.width(r.currentview.x)/IntervalSets.width(r.fullview.x)) # physical dimension of handle
+        drawrecthandle(ctx, rh, d, colorant"blue", 1.0)
     end
 
     showall(win);
 
-    #Context
+    # Context
     imagectx = ImageContext(image, c, zr, 1, Signal(false), Signal(false),
-                            Signal(false))
+                            Signal(false), rect, rectview)
     
     # Mouse actions
     pandrag = init_pan_drag(c, zr) # dragging moves image
     zoomclick = init_zoom_click(imagectx) # clicking zooms image
-    rectselect = rect_select(c, rect) # click + drag modifies rect selection
+    rectselect = init_rect_select(imagectx) # click + drag modifies rect selection
     
     imagectx.pandrag = pandrag["enabled"]
     imagectx.zoomclick = zoomclick["enabled"]
@@ -540,7 +579,7 @@ active_context = map(img_ctxs) do ic # signal dependent on img_ctxs
     end
 end
 
-function set_mode(ctx, mode::Int)
+function set_mode(ctx::ImageContext, mode::Int)
     push!(ctx.pandrag, false)
     push!(ctx.zoomclick, false)
     push!(ctx.rectselect, false)
