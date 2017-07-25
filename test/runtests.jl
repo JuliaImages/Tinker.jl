@@ -33,8 +33,11 @@ Reactive.run_till_now()
 @test Tinker.zpercents[Tinker.next_zoom(test_ctx)] == 1.5
 @test Tinker.zpercents[Tinker.prev_zoom(test_ctx)] == 1.0
 
-# Test rectangle select functions
-#@test Tinker.Rectangle(XY(5.0, 56.8), XY(23.4, 10.0)) == Tinker.Rectangle(5.0, 10.0, 18.4, 46.8) # why does this fail?
+# Test Rectangle constructors
+r1 = Tinker.Rectangle(XY(5.0, 56.8), XY(23.4, 10.0))
+r2 = Tinker.Rectangle(5.0, 10.0, 18.4, 46.8)
+@test (r1.x,r1.y,r1.w,r1.h) == (r2.x,r2.y,r2.w,r2.h)
+# Test get_handle
 rectangle = Tinker.Rectangle(XY(5.0, 56.8), XY(23.4, 10.0))
 recth = Tinker.RectHandle(rectangle)
 @test recth.h[3] == Tinker.get_handle(recth, "trc")
