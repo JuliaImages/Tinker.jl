@@ -88,3 +88,11 @@ d = 8*(IntervalSets.width(test_zr.currentview.x)/IntervalSets.width(test_zr.full
     Tinker.get_p2(recth.h[7], recth, btn7)
 @test XY{UserUnit}(btn8.position.x, recth.r.y) ==
     Tinker.get_p2(recth.h[8], recth, btn8)
+
+# Test get_view
+img = value(Tinker.active_context).image
+@test img == Tinker.get_view(img, 1, 1, size(img,2), size(img,1))
+@test img == Tinker.get_view(img, -50, -50, size(img,2)+20, size(img,1))
+@test view(img, Int(floor(size(img,1)/4)):Int(floor(size(img,1)/2)),
+           Int(floor(size(img,2)/4)):Int(floor(size(img,2)/2))) ==
+    Tinker.get_view(img,size(img,2)/4,size(img,1)/4,size(img,2)/2,size(img,1)/2)
