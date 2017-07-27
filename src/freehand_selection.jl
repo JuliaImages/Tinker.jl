@@ -11,15 +11,17 @@ function init_freehand_select(ctx::ImageContext)
     max_y = Signal(Float64(size(ctx.image,1)))
 
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
-        push!(dragging, true)
-        push!(ctx.shape, Rectangle()) # some identifier of type of selection
-        push!(ctx.points, [])
-        push!(ctx.points, [btn.position])
-        # initialize max and min
-        push!(min_x,btn.position.x)
-        push!(max_x,btn.position.x)
-        push!(min_y,btn.position.y)
-        push!(max_y,btn.position.y)
+        if !ispolygon(value(ctx.points)) || !isinside(Point(btn.position), Point.(value(ctx.points)))
+            push!(dragging, true)
+            push!(ctx.shape, Rectangle()) # some identifier of type of selection
+            push!(ctx.points, [])
+            push!(ctx.points, [btn.position])
+            # initialize max and min
+            push!(min_x,btn.position.x)
+            push!(max_x,btn.position.x)
+            push!(min_y,btn.position.y)
+            push!(max_y,btn.position.y)
+        end
     end
 
     sigdrag = map(filterwhen(dragging, dummybtn, c.mouse.motion)) do btn

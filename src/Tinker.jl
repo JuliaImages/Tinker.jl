@@ -1,6 +1,6 @@
 module Tinker
 
-using Gtk.ShortNames, GtkReactive, Graphics, Colors, Images, IntervalSets
+using Gtk.ShortNames, GtkReactive, Graphics, Colors, Images, IntervalSets, Luxor.isinside, Luxor.Point
 
 img_ctxs = Signal([])
 
@@ -23,16 +23,13 @@ mutable struct ImageContext{T}
     canvas::GtkReactive.Canvas
     zr::Signal{ZoomRegion{T}}
     zl::Int # for tracking zoom level
-    pandrag::Signal{Bool} # pandrag enabled for this context
-    zoomclick::Signal{Bool} # zoomclick enabled for this context
-    rectselect::Signal{Bool} # etc
-    freehand::Signal{Bool}
+    mouseactions::Dict{String,Signal{Bool}}
     shape::Signal{<:Shape} # Tracks type of selection in the environment
     points::Signal{<:AbstractArray} # Holds points that define shape outline
     rectview::Signal{<:AbstractArray} # Holds rectangular region corresponding to outline
 end
 
-ImageContext() = ImageContext(nothing, canvas(), Signal(ZoomRegion((1:10, 1:10))), -1, Signal(false), Signal(false), Signal(false), Signal(false), Signal(Rectangle()), Signal([]), Signal([]))
+ImageContext() = ImageContext(nothing, canvas(), Signal(ZoomRegion((1:10, 1:10))), -1, Dict("dummy"=>Signal(false)), Signal(Rectangle()), Signal([]), Signal([]))
 
 function get_view(image,x_min,y_min,x_max,y_max)
     xleft,yleft = Int(floor(Float64(x_min))),Int(floor(Float64(y_min)))
@@ -147,6 +144,61 @@ function drawline(ctx, l, color, width)
     stroke(ctx)
 end
 
+function ispolygon(p::AbstractArray) # type better
+    length(p) < 3 && return false
+    for i in 1:(length(p)-1)
+        p[i]!=p[i+1] && return true
+    end
+    return false
+end
+
+# Moves polygon to a given location
+function move_polygon_to(p::AbstractArray, pt::XY)
+    # find diff b/t start & pt; add diff to all in p
+    diff = XY(pt.x-p[1].x,pt.y-p[1].y)
+    map(n -> XY(n.x+diff.x,n.y+diff.y),p)
+end
+
+function Point(p::XY)
+    Point(p.x,p.y)
+end
+
+function init_move_polygon(ctx::ImageContext)
+    c = ctx.canvas
+    pts = ctx.points
+    enabled = Signal(true)
+    dragging = Signal(false)
+    diff = Signal(XY(-1.0,-1.0))
+
+    dummybutton = MouseButton{UserUnit}()
+    sigstart = map(filterwhen(enabled,dummybutton,c.mouse.buttonpress)) do btn
+        if ispolygon(value(ctx.points))
+            if isinside(Point(btn.position), Point.(value(pts)))
+                push!(dragging,true)
+                #push!(ctx.points, move_polygon_to(value(ctx.points),
+                                                  #btn.position))
+                push!(diff, XY(btn.position.x-value(ctx.points)[1].x,
+                               btn.position.y-value(ctx.points)[1].y))
+            end
+        end
+        nothing
+    end
+
+    sigdrag = map(filterwhen(dragging,dummybutton,c.mouse.motion)) do btn
+        push!(ctx.points, move_polygon_to(value(ctx.points),XY(btn.position.x-value(diff).x, btn.position.y-value(diff).y)))
+        nothing
+    end
+
+    sigend = map(filterwhen(dragging,dummybutton,c.mouse.buttonrelease)) do btn
+        push!(dragging,false)
+        push!(diff, XY(-1.0,-1.0))
+        nothing
+    end
+    
+    append!(c.preserved, [sigstart, sigdrag, sigend])
+    Dict("enabled"=>enabled)
+end
+
 include("zoom_interaction.jl")
 include("rectangle_selection.jl")
 include("freehand_selection.jl")
@@ -200,26 +252,25 @@ function init_gui(image::AbstractArray; name="Tinker")
 =#  
 
     # Context
-    imagectx = ImageContext(image, c, zr, 1, Signal(false), Signal(false),
-                            Signal(false), Signal(false), rect, points,
-                            Signal(view(image,1:size(image,2),1:size(image,1))))
+    imagectx = ImageContext(image, c, zr, 1, Dict("dummy"=>Signal(false)),
+                            rect, points, Signal(view(image,1:size(image,2),
+                                                      1:size(image,1))))
     
     # Mouse actions
     pandrag = init_pan_drag(c, zr) # dragging moves image
     zoomclick = init_zoom_click(imagectx) # clicking zooms image
     rectselect = init_rect_select(imagectx) # click + drag modifies rect selection
     freehand = init_freehand_select(imagectx)
+    movepol = init_move_polygon(imagectx)
     push!(pandrag["enabled"],false)
     push!(zoomclick["enabled"],false)
     push!(rectselect["enabled"],false)
     push!(freehand["enabled"],false)
+    push!(movepol["enabled"],false)
+
+    imagectx.mouseactions = Dict("pandrag"=>pandrag["enabled"],"zoomclick"=>zoomclick["enabled"],"rectselect"=>rectselect["enabled"],"freehand"=>freehand["enabled"],"movepol"=>movepol["enabled"])
     
-    imagectx.pandrag = pandrag["enabled"]
-    imagectx.zoomclick = zoomclick["enabled"]
-    imagectx.rectselect = rectselect["enabled"]
-    imagectx.freehand = freehand["enabled"]
-    
-    append!(c.preserved, [pandrag, rectselect, freehand])
+    append!(c.preserved, [pandrag, zoomclick, rectselect, freehand, movepol])
 
     # draw
     redraw = draw(c, imagesig, zr, viewdim, imagectx.points) do cnvs, img, r, vd, pt
@@ -253,21 +304,36 @@ active_context = map(img_ctxs) do ic # signal dependent on img_ctxs
 end
 
 function set_mode(ctx::ImageContext, mode::Int)
-    push!(ctx.pandrag, false)
-    push!(ctx.zoomclick, false)
-    push!(ctx.rectselect, false)
-    push!(ctx.freehand, false)
+    push!(ctx.mouseactions["pandrag"], false)
+    push!(ctx.mouseactions["zoomclick"], false)
+    push!(ctx.mouseactions["rectselect"], false)
+    push!(ctx.mouseactions["freehand"], false)
+    push!(ctx.mouseactions["movepol"],false)
     if mode == 1 # turn on zoom controls
         println("Zoom mode")
-        push!(ctx.pandrag, true)
-        push!(ctx.zoomclick, true)
+        push!(ctx.mouseactions["pandrag"], true)
+        push!(ctx.mouseactions["zoomclick"], true)
     elseif mode == 2 # turn on rectangular region selection controls
         println("Rectangle mode")
-        push!(ctx.rectselect, true)
+        push!(ctx.mouseactions["rectselect"], true)
     elseif mode == 3 # freehand select
         println("Freehand mode")
-        push!(ctx.freehand,true)
+        push!(ctx.mouseactions["freehand"],true)
+        println("Move mode")
+        push!(ctx.mouseactions["movepol"],true)
     end
+end
+
+# Moves polygon by +diff.x, +diff.y
+function move_polygon_by(p::AbstractArray{XY}, diff::XY)
+    #for every point:
+    #add diff.x to x field; add diff.y to y field
+end
+
+function move_polygon_to_mouse(p::AbstractArray{XY}, pt::XY, diff::Int)
+    # diff = difference between start & buttonpress
+    # pt = mouse loc
+    # subtract diff from pt. add result to all in p
 end
 
 end # module
