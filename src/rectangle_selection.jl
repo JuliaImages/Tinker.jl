@@ -84,7 +84,7 @@ function init_rect_select(ctx::ImageContext)
     end
     
     recthandle = map(rect) do r
-         RectHandle(r)
+        RectHandle(r)
     end
     
     # Set of signals used for mouse action logic
@@ -116,7 +116,7 @@ function init_rect_select(ctx::ImageContext)
             if !isempty(current)
                 push!(p1, get_p1(current, value(recthandle)))
                 push!(p2, get_p2(current, value(recthandle), btn))
-            # If the click was inside the rectangle:
+                # If the click was inside the rectangle:
             elseif (Float64(value(rect).x)<Float64(btn.position.x)<Float64(value(rect).x+value(rect).w)) && (Float64(value(rect).y)<Float64(btn.position.y)<Float64(value(rect).y+value(rect).h))
                 push!(locmod,true)
                 # the difference between click and rectangle corner
@@ -169,17 +169,6 @@ function init_rect_select(ctx::ImageContext)
         elseif !isempty(value(recthandle))
             push!(p2,btn.position)
             push!(ctx.shape,value(rect))
-        end
-        if isempty(value(rect)) # rect hasn't been initialized
-            # rectview is the full image
-            push!(ctx.rectview, view(ctx.image,
-                                     1:size(ctx.image,1), 1:size(ctx.image,2)))
-        else # calculate rectview
-            push!(ctx.rectview, get_view(ctx.image,
-                                         min(value(p1).x,value(p2).x),
-                                         min(value(p1).y,value(p2).y),
-                                         max(value(p1).x,value(p2).x),
-                                         max(value(p1).y,value(p2).y)))
         end
         nothing
     end

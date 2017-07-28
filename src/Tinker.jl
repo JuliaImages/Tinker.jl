@@ -26,18 +26,21 @@ mutable struct ImageContext{T}
     mouseactions::Dict{String,Signal{Bool}}
     shape::Signal{<:Shape} # Tracks type of selection in the environment
     points::Signal{<:AbstractArray} # Holds points that define shape outline
-    rectview::Signal{<:AbstractArray} # Holds rectangular region corresponding to outline
+    rectview::Signal{<:AbstractArray} # Holds bounding box of selection
 end
 
 ImageContext() = ImageContext(nothing, canvas(), Signal(ZoomRegion((1:10, 1:10))), -1, Dict("dummy"=>Signal(false)), Signal(Rectangle()), Signal([]), Signal([]))
 
+# Returns a view of an image with the given bounding region
 function get_view(image,x_min,y_min,x_max,y_max)
-    xleft,yleft = Int(floor(Float64(x_min))),Int(floor(Float64(y_min)))
-    xright,yright = Int(floor(Float64(x_max))),Int(floor(Float64(y_max)))
-    (xleft < 1) && (xleft = 1)
-    (yleft < 1) && (yleft = 1)
-    (xright > size(image,2)) && (xright = size(image,2))
-    (yright > size(image,1)) && (yright = size(image,1))
+    xleft,yleft = Int(floor(Float64(x_min))),Int(ceil(Float64(y_min)))
+    xright,yright = Int(floor(Float64(x_max))),Int(ceil(Float64(y_max)))
+    min_x, max_x = map(x->x, extrema(indices(image,2)))
+    min_y, max_y = map(y->y, extrema(indices(image,1)))
+    (xleft < min_x) && (xleft = min_x)
+    (yleft < min_y) && (yleft = min_y)
+    (xright > max_x) && (xright = max_x)
+    (yright > max_y) && (yright = max_y)
     return view(image, yleft:yright, xleft:xright)
 end
 
@@ -131,6 +134,7 @@ function drawrecthandle(ctx, rh::RectHandle, d, color1, width)
     end
 end
 
+# Connects an array of points
 function drawline(ctx, l, color, width)
     isempty(l) && return
     p = first(l)
@@ -144,8 +148,10 @@ function drawline(ctx, l, color, width)
     stroke(ctx)
 end
 
-function ispolygon(p::AbstractArray) # type better
+# Checks if an array of points qualifies as a polygon
+function ispolygon(p::AbstractVector)
     length(p) < 3 && return false
+    p[1] != p[end] && return false
     for i in 1:(length(p)-1)
         p[i]!=p[i+1] && return true
     end
@@ -159,20 +165,22 @@ function move_polygon_to(p::AbstractArray, pt::XY)
     map(n -> XY(n.x+diff.x,n.y+diff.y),p)
 end
 
+# Converts an XY to a Point
 function Point(p::XY)
     Point(p.x,p.y)
 end
 
+# Mouse actions to move any polygon
 function init_move_polygon(ctx::ImageContext)
     c = ctx.canvas
     pts = ctx.points
     enabled = Signal(true)
     dragging = Signal(false)
-    diff = Signal(XY(-1.0,-1.0))
+    diff = Signal(XY(NaN,NaN))
 
     dummybutton = MouseButton{UserUnit}()
     sigstart = map(filterwhen(enabled,dummybutton,c.mouse.buttonpress)) do btn
-        if ispolygon(value(ctx.points))
+        if ispolygon(value(ctx.points)) # prevents conflict with init_freehand_select
             if isinside(Point(btn.position), Point.(value(pts)))
                 push!(dragging,true)
                 #push!(ctx.points, move_polygon_to(value(ctx.points),
@@ -191,7 +199,7 @@ function init_move_polygon(ctx::ImageContext)
 
     sigend = map(filterwhen(dragging,dummybutton,c.mouse.buttonrelease)) do btn
         push!(dragging,false)
-        push!(diff, XY(-1.0,-1.0))
+        push!(diff, XY(NaN,NaN))
         nothing
     end
     
@@ -244,17 +252,23 @@ function init_gui(image::AbstractArray; name="Tinker")
     points = map(rect) do r
         r.pts
     end
-    # Creates RectHandle object dependent on rect
-    #=
-    recthandle = map(rect) do r
-        RectHandle(r)
-    end
-=#  
 
     # Context
     imagectx = ImageContext(image, c, zr, 1, Dict("dummy"=>Signal(false)),
                             rect, points, Signal(view(image,1:size(image,2),
                                                       1:size(image,1))))
+
+    rectview = map(imagectx.points) do pts
+        if ispolygon(pts)
+            x_min,x_max = minimum(map(n->n.x,pts)),maximum(map(n->n.x,pts))
+            y_min,y_max =minimum(map(n->n.y,pts)),maximum(map(n->n.y,pts))
+            get_view(image,x_min,y_min,x_max,y_max)
+        else
+            view(image,1:size(image,2),1:size(image,1))
+        end
+    end
+    imagectx.rectview = rectview
+        
     
     # Mouse actions
     pandrag = init_pan_drag(c, zr) # dragging moves image
@@ -262,13 +276,15 @@ function init_gui(image::AbstractArray; name="Tinker")
     rectselect = init_rect_select(imagectx) # click + drag modifies rect selection
     freehand = init_freehand_select(imagectx)
     movepol = init_move_polygon(imagectx)
+    polysel = init_polygon_select(imagectx)
     push!(pandrag["enabled"],false)
     push!(zoomclick["enabled"],false)
     push!(rectselect["enabled"],false)
     push!(freehand["enabled"],false)
     push!(movepol["enabled"],false)
+    push!(polysel["enabled"],false)
 
-    imagectx.mouseactions = Dict("pandrag"=>pandrag["enabled"],"zoomclick"=>zoomclick["enabled"],"rectselect"=>rectselect["enabled"],"freehand"=>freehand["enabled"],"movepol"=>movepol["enabled"])
+    imagectx.mouseactions = Dict("pandrag"=>pandrag["enabled"],"zoomclick"=>zoomclick["enabled"],"rectselect"=>rectselect["enabled"],"freehand"=>freehand["enabled"],"movepol"=>movepol["enabled"],"polysel"=>polysel["enabled"])
     
     append!(c.preserved, [pandrag, zoomclick, rectselect, freehand, movepol])
 
@@ -309,6 +325,7 @@ function set_mode(ctx::ImageContext, mode::Int)
     push!(ctx.mouseactions["rectselect"], false)
     push!(ctx.mouseactions["freehand"], false)
     push!(ctx.mouseactions["movepol"],false)
+    push!(ctx.mouseactions["polysel"],false)
     if mode == 1 # turn on zoom controls
         println("Zoom mode")
         push!(ctx.mouseactions["pandrag"], true)
@@ -321,19 +338,13 @@ function set_mode(ctx::ImageContext, mode::Int)
         push!(ctx.mouseactions["freehand"],true)
         println("Move mode")
         push!(ctx.mouseactions["movepol"],true)
+    elseif mode == 4 # polygon select
+        println("Polygon mode")
+        push!(ctx.mouseactions["polysel"],true)
+        push!(ctx.mouseactions["movepol"],true)
     end
 end
 
-# Moves polygon by +diff.x, +diff.y
-function move_polygon_by(p::AbstractArray{XY}, diff::XY)
-    #for every point:
-    #add diff.x to x field; add diff.y to y field
-end
-
-function move_polygon_to_mouse(p::AbstractArray{XY}, pt::XY, diff::Int)
-    # diff = difference between start & buttonpress
-    # pt = mouse loc
-    # subtract diff from pt. add result to all in p
-end
+set_mode(sig::Signal, mode) = set_mode(value(sig), mode)
 
 end # module
