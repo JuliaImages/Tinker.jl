@@ -150,7 +150,7 @@ end
 
 # Checks if an array of points qualifies as a polygon
 function ispolygon(p::AbstractVector)
-    length(p) < 3 && return false
+    length(p) < 4 && return false
     p[1] != p[end] && return false
     for i in 1:(length(p)-1)
         p[i]!=p[i+1] && return true

@@ -31,22 +31,25 @@ function init_freehand_select(ctx::ImageContext)
     Dict("enabled"=>enabled)
 end
 
-#=
 function init_polygon_select(ctx::ImageContext)
-    c = ctx.canvas
     enabled = Signal(true)
+    c = ctx.canvas
 
     dummybtn = MouseButton{UserUnit}()
     push!(ctx.points, [])
 
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
-        @show ispolygon(value(ctx.points))
         if ispolygon(value(ctx.points)) && !isinside(Point(btn.position),Point.(value(ctx.points)))
             push!(ctx.points,[])
             Reactive.run_till_now()
         end
-        
-        #push!(ctx.points, push!(value(ctx.points), btn.position))
+        if !ispolygon(value(ctx.points))
+            next = btn.position
+            if length(value(ctx.points)) > 3 # and click is near start
+                next = value(ctx.points)[1]
+            end
+            push!(ctx.points, push!(value(ctx.points), next))
+        end
     end
 
     sigmove = map(filterwhen(enabled,dummybtn, c.mouse.motion)) do btn
@@ -56,4 +59,3 @@ function init_polygon_select(ctx::ImageContext)
     append!(c.preserved, [sigstart, sigmove])
     Dict("enabled"=>enabled)
 end
-=#

@@ -99,3 +99,12 @@ img = value(Tinker.active_context).image
 @test view(img, Int(floor(size(img,1)/4)):Int(floor(size(img,1)/2)),
            Int(floor(size(img,2)/4)):Int(floor(size(img,2)/2))) ==
     Tinker.get_view(img,size(img,2)/4,size(img,1)/4,size(img,2)/2,size(img,1)/2)
+
+# Test ispolygon
+@test !Tinker.ispolygon([XY(1,2),XY(1,2)])
+@test !Tinker.ispolygon([XY(1,2),XY(1,2),XY(1,2),XY(1,2)])
+@test !Tinker.ispolygon([XY(1,2),XY(3,4),XY(1,2)])
+@test Tinker.ispolygon([XY(1,2),XY(5,6),XY(38,42),XY(1,2)])
+@test !Tinker.ispolygon([XY(1,2),XY(5,6),XY(38,42),XY(2,2)])
+@test Tinker.ispolygon([XY(4,4),XY(5,5),XY(6,7), XY(4,20),XY(9,9),XY(4,4)])
+@test !Tinker.ispolygon([XY(1,2),XY(5,6),XY(38,42),XY(1,2),XY(4,4)])
