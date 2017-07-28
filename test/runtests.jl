@@ -3,7 +3,7 @@ using Tinker, Base.Test, TestImages, GtkReactive
 # make sure init_gui runs
 Tinker.init_gui(testimage("cameraman.tif"); name="Testing")
 Reactive.run_till_now()
-Tinker.set_mode(value(Tinker.active_context), 2)
+Tinker.set_mode(Tinker.active_context, 3)
 rselection = value(Tinker.active_context).rectview # current selected region
 
 # Test zoom functions
@@ -33,8 +33,11 @@ Reactive.run_till_now()
 @test Tinker.zpercents[Tinker.next_zoom(test_ctx)] == 1.5
 @test Tinker.zpercents[Tinker.prev_zoom(test_ctx)] == 1.0
 
-# Test rectangle select functions
-@test Tinker.Rectangle(XY(5.0, 56.8), XY(23.4, 10.0)) == Tinker.Rectangle(5.0, 10.0, 18.4, 46.8)
+# Test Rectangle constructors
+r1 = Tinker.Rectangle(XY(5.0, 56.8), XY(23.4, 10.0))
+r2 = Tinker.Rectangle(5.0, 10.0, 18.4, 46.8)
+@test (r1.x,r1.y,r1.w,r1.h) == (r2.x,r2.y,r2.w,r2.h)
+# Test get_handle
 rectangle = Tinker.Rectangle(XY(5.0, 56.8), XY(23.4, 10.0))
 recth = Tinker.RectHandle(rectangle)
 @test recth.h[3] == Tinker.get_handle(recth, "trc")
@@ -88,3 +91,20 @@ d = 8*(IntervalSets.width(test_zr.currentview.x)/IntervalSets.width(test_zr.full
     Tinker.get_p2(recth.h[7], recth, btn7)
 @test XY{UserUnit}(btn8.position.x, recth.r.y) ==
     Tinker.get_p2(recth.h[8], recth, btn8)
+
+# Test get_view
+img = value(Tinker.active_context).image
+@test img == Tinker.get_view(img, 1, 1, size(img,2), size(img,1))
+@test img == Tinker.get_view(img, -50, -50, size(img,2)+20, size(img,1))
+@test view(img, Int(floor(size(img,1)/4)):Int(floor(size(img,1)/2)),
+           Int(floor(size(img,2)/4)):Int(floor(size(img,2)/2))) ==
+    Tinker.get_view(img,size(img,2)/4,size(img,1)/4,size(img,2)/2,size(img,1)/2)
+
+# Test ispolygon
+@test !Tinker.ispolygon([XY(1,2),XY(1,2)])
+@test !Tinker.ispolygon([XY(1,2),XY(1,2),XY(1,2),XY(1,2)])
+@test !Tinker.ispolygon([XY(1,2),XY(3,4),XY(1,2)])
+@test Tinker.ispolygon([XY(1,2),XY(5,6),XY(38,42),XY(1,2)])
+@test !Tinker.ispolygon([XY(1,2),XY(5,6),XY(38,42),XY(2,2)])
+@test Tinker.ispolygon([XY(4,4),XY(5,5),XY(6,7), XY(4,20),XY(9,9),XY(4,4)])
+@test !Tinker.ispolygon([XY(1,2),XY(5,6),XY(38,42),XY(1,2),XY(4,4)])

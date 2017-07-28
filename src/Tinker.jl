@@ -1,6 +1,6 @@
 module Tinker
 
-using Gtk.ShortNames, GtkReactive, Graphics, Colors, Images, IntervalSets
+using Gtk.ShortNames, GtkReactive, Graphics, Colors, Images, IntervalSets, Luxor.isinside, Luxor.Point
 
 img_ctxs = Signal([])
 
@@ -12,9 +12,10 @@ struct Rectangle <: Shape
     y::Number
     w::Number
     h::Number
+    pts::AbstractArray
 end
 
-Rectangle() = Rectangle(0,0,-1,-1)
+Rectangle() = Rectangle(0,0,-1,-1, [])
 Base.isempty(R::Rectangle) = R.w <= 0 || R.h <= 0
 
 mutable struct ImageContext{T}
@@ -22,14 +23,32 @@ mutable struct ImageContext{T}
     canvas::GtkReactive.Canvas
     zr::Signal{ZoomRegion{T}}
     zl::Int # for tracking zoom level
-    pandrag::Signal{Bool}
-    zoomclick::Signal{Bool}
-    rectselect::Signal{Bool}
-    shape::Signal{<:Shape} # Holds selection outline
-    rectview::Signal{<:AbstractArray} # holds rectangular region corresponding to outline (type?)
+    mouseactions::Dict{String,Signal{Bool}}
+    shape::Signal{<:Shape} # Tracks type of selection in the environment
+    points::Signal{<:AbstractArray} # Holds points that define shape outline
+    rectview::Signal{<:AbstractArray} # Holds bounding box of selection
 end
 
-ImageContext() = ImageContext(nothing, canvas(), Signal(ZoomRegion((1:10, 1:10))), -1, Signal(false), Signal(false), Signal(false), Signal(Rectangle()), Signal([]))
+ImageContext() = ImageContext(nothing, canvas(), Signal(ZoomRegion((1:10, 1:10))), -1, Dict("dummy"=>Signal(false)), Signal(Rectangle()), Signal([]), Signal([]))
+
+# Returns a view of an image with the given bounding region
+function get_view(image,x_min,y_min,x_max,y_max)
+    xleft,yleft = Int(floor(Float64(x_min))),Int(ceil(Float64(y_min)))
+    xright,yright = Int(floor(Float64(x_max))),Int(ceil(Float64(y_max)))
+    min_x, max_x = map(x->x, extrema(indices(image,2)))
+    min_y, max_y = map(y->y, extrema(indices(image,1)))
+    (xleft < min_x) && (xleft = min_x)
+    (yleft < min_y) && (yleft = min_y)
+    (xright > max_x) && (xright = max_x)
+    (yright > max_y) && (yright = max_y)
+    return view(image, yleft:yright, xleft:xright)
+end
+
+# Creates a Rectangle out of x,y,w,h
+function Rectangle(x,y,w,h)
+    pts = [XY(x,y), XY(x+w,y), XY(x+w,y+h), XY(x,y+h), XY(x,y)]
+    return Rectangle(x,y,w,h,pts)
+end
 
 # Creates a Rectangle out of any two points
 function Rectangle(p1::XY,p2::XY)
@@ -89,12 +108,6 @@ function drawhandle(ctx, handle::Handle, d)
     end
 end; # like drawrect, but makes x,y refer to center of handle
 
-# Returns true if a handle is clicked
-function is_clicked(pt::XY, handle::Handle, d)
-    return (handle.x - d/2 < pt.x < handle.x + d/2) &&
-        (handle.y - d/2 < pt.y < handle.y + d/2)
-end
-
 # A rectangle with handles at all 8 positions
 struct RectHandle
     r::Rectangle
@@ -121,360 +134,82 @@ function drawrecthandle(ctx, rh::RectHandle, d, color1, width)
     end
 end
 
-# Given a RectHandle and a position, returns the corresponding Handle
-function get_handle(rh::RectHandle, pos::String)
-    for i in 1:8
-        pos == rh.h[i].pos && return rh.h[i]
+# Connects an array of points
+function drawline(ctx, l, color, width)
+    isempty(l) && return
+    p = first(l)
+    move_to(ctx, p.x, p.y) 
+    set_source(ctx, color)
+    set_line_width(ctx, width)
+    for i = 2:length(l)
+        p = l[i] 
+        line_to(ctx, p.x, p.y)
     end
-    println("Not a valid position")
-    return Handle()
+    stroke(ctx)
 end
 
-# Gets anchor point for modification by handle
-function get_p1(h::Handle, rh::RectHandle)
-    opposite_dict = Dict('b'=>"t", 't'=>"b", 'l'=>"r", 'r'=>"l")
-    if h.pos[end] == 'c' # 'h' is a corner
-        opp_pos = ""
-        # build pos string for opposite corner
-        opp_pos *= opposite_dict[h.pos[1]]
-        opp_pos *= opposite_dict[h.pos[2]]
-        opp_pos *= "c"
-        # set p1
-        opposite = get_handle(rh, opp_pos) # Handle object
-        p1 = XY{UserUnit}(opposite.x,opposite.y) # XY object
-    elseif h.pos[end] == 's' # 'h' is a side
-        if h.pos == "ts"
-            # modify top
-            p1 = XY{UserUnit}(rh.h[5].x,rh.h[5].y)
-        elseif h.pos == "rs"
-            # modify right
-            p1 = XY{UserUnit}(rh.r.x, rh.r.y)
-        elseif h.pos == "bs"
-            # modify bottom
-            p1 = XY{UserUnit}(rh.r.x, rh.r.y)
-        elseif h.pos == "ls"
-            # modify left
-            p1 = XY{UserUnit}(rh.h[5].x,rh.h[5].y)
-        end
-    else
-        println("Invalid position in get_p1")
-        p1 = XY{UserUnit}(0,0)
+# Checks if an array of points qualifies as a polygon
+function ispolygon(p::AbstractVector)
+    length(p) < 4 && return false
+    p[1] != p[end] && return false
+    for i in 1:(length(p)-1)
+        p[i]!=p[i+1] && return true
     end
-    return p1
+    return false
 end
 
-# Gets dynamic point for modification by handle
-function get_p2(h::Handle, rh::RectHandle, btn)
-    if h.pos[end] == 'c' # 'h' is a corner
-        p2 = XY{UserUnit}(btn.position.x, btn.position.y)
-    elseif h.pos[end] == 's' # 'h' is a side
-        if h.pos == "ts"
-            # modify top
-            p2 = XY{UserUnit}(rh.r.x, btn.position.y)
-        elseif h.pos == "rs"
-            # modify right
-            p2 = XY{UserUnit}(btn.position.x, rh.h[5].y)
-        elseif h.pos == "bs"
-            # modify bottom
-            p2 = XY{UserUnit}(rh.h[5].x, btn.position.y)
-        elseif h.pos == "ls"
-            # modify left
-            p2 = XY{UserUnit}(btn.position.x, rh.r.y)
-        end
-    else
-        println("Invalid position in get_p2")
-        p2 = XY{UserUnit}(0,0)
-    end
-    return p2
+# Moves polygon to a given location
+function move_polygon_to(p::AbstractArray, pt::XY)
+    # find diff b/t start & pt; add diff to all in p
+    diff = XY(pt.x-p[1].x,pt.y-p[1].y)
+    map(n -> XY(n.x+diff.x,n.y+diff.y),p)
 end
 
-# Mouse actions for rectangular selection creation and modification
-function init_rect_select(ctx::ImageContext)
+# Converts an XY to a Point
+function Point(p::XY)
+    Point(p.x,p.y)
+end
+
+# Mouse actions to move any polygon
+function init_move_polygon(ctx::ImageContext)
     c = ctx.canvas
-    rect = ctx.shape
-    
-    recthandle = map(rect) do r
-         RectHandle(r)
-    end
+    pts = ctx.points
     enabled = Signal(true)
-    dragging = Signal(false) # true if mouse was pressed down before it was moved
-    modifying = Signal(false) # true if there is an existing rectangle &
-    # user clicked somewhere on it
-    p1 = Signal(XY{UserUnit}(-1.0,-1.0)) # ints or floats? -> make ints
-    p2 = Signal(XY{UserUnit}(-1.0,-1.0))
-    modhandle = Signal(Handle()) # handle that was clicked
-    locmod = Signal(false) # true if modifying rectangle location
-    diff = Signal(XY(0.0,0.0)) # difference between btn.position of sigstart &
-    # top left corner of rectangle - used for moving rect
+    dragging = Signal(false)
+    diff = Signal(XY(NaN,NaN))
 
-    dummybtn = MouseButton{UserUnit}()
-    sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
-        push!(dragging, true)
-        # If there is already a rectangle in the environment, begin to modify
-        if !isempty(value(recthandle))
-            push!(modifying,true)
-            # Identify if click is inside handle
-            current = Handle()
-            d = 8*(IntervalSets.width(value(ctx.zr).currentview.x)/IntervalSets.width(value(ctx.zr).fullview.x)) # physical dimension of handle
-            for n in 1:length(value(recthandle).h)
-                if is_clicked(btn.position, value(recthandle).h[n], d)
-                    current = value(recthandle).h[n]
-                    push!(modhandle, current)
-                    break
-                end
+    dummybutton = MouseButton{UserUnit}()
+    sigstart = map(filterwhen(enabled,dummybutton,c.mouse.buttonpress)) do btn
+        if ispolygon(value(ctx.points)) # prevents conflict with init_freehand_select
+            if isinside(Point(btn.position), Point.(value(pts)))
+                push!(dragging,true)
+                #push!(ctx.points, move_polygon_to(value(ctx.points),
+                                                  #btn.position))
+                push!(diff, XY(btn.position.x-value(ctx.points)[1].x,
+                               btn.position.y-value(ctx.points)[1].y))
             end
-            # If the click was on a handle:
-            if !isempty(current)
-                push!(p1, get_p1(current, value(recthandle)))
-                push!(p2, get_p2(current, value(recthandle), btn))
-            elseif (value(rect).x<btn.position.x<value(rect).x+value(rect).w) &&
-                (value(rect).y<btn.position.y<value(rect).y+value(rect).h)
-                push!(locmod,true)
-                # the difference between click and rectangle corner
-                push!(diff, XY(Float64(btn.position.x) - value(rect).x,
-                               Float64(btn.position.y) - value(rect).y))
-            else
-                # Destroy rectangle and allow for a new one to be created
-                push!(modifying,false)
-                push!(rect, Rectangle())
-                push!(p1, btn.position)
-                push!(p2, btn.position)
-            end
-            # If there isn't a rectangle in the environment, begin to build one
-        else
-            push!(modifying,false)
-            push!(p1,btn.position) # get values?
-            push!(p2,btn.position)
         end
         nothing
     end
 
-    sigdrag = map(filterwhen(dragging, dummybtn, c.mouse.motion)) do btn
-        # If we are modifying an existing rectangle:
-        if value(modifying)
-            if !isempty(value(modhandle))
-                push!(p2, get_p2(value(modhandle), value(recthandle), btn))
-                push!(rect, Rectangle(XY(Float64(value(p1).x),
-                                         Float64(value(p1).y)),
-                                      XY(Float64(value(p2).x),
-                                         Float64(value(p2).y))))
-            elseif value(locmod) # if modifying the location
-                # move rectangle
-                w = value(rect).w
-                h = value(rect).h
-                push!(rect, Rectangle(btn.position.x-value(diff).x,
-                                      btn.position.y-value(diff).y, w,h))
-            end
-            # If we are building a new rectangle:
-        else
-            push!(p2,btn.position)
-            push!(rect,Rectangle(XY(Float64(value(p1).x),Float64(value(p1).y)),
-                                 XY(Float64(value(p2).x),Float64(value(p2).y))))
-        end
+    sigdrag = map(filterwhen(dragging,dummybutton,c.mouse.motion)) do btn
+        push!(ctx.points, move_polygon_to(value(ctx.points),XY(btn.position.x-value(diff).x, btn.position.y-value(diff).y)))
         nothing
     end
 
-    sigend = map(filterwhen(dragging, dummybtn, c.mouse.buttonrelease)) do btn
+    sigend = map(filterwhen(dragging,dummybutton,c.mouse.buttonrelease)) do btn
         push!(dragging,false)
-        # End modification actions
-        if value(modifying)
-            push!(locmod,false)
-            push!(modhandle, Handle())
-            # End build actions
-        elseif !isempty(value(recthandle))
-            push!(p2,btn.position)
-            push!(rect,Rectangle(XY(Float64(value(p1).x),Float64(value(p1).y)),
-                                 XY(Float64(value(p2).x),Float64(value(p2).y))))
-        end
+        push!(diff, XY(NaN,NaN))
         nothing
     end
-
+    
     append!(c.preserved, [sigstart, sigdrag, sigend])
     Dict("enabled"=>enabled)
 end
 
-## Functions for handling zoom:
-# Zooms zr to the decimal % entered; view centered around center XY
-function zoom_percent(z::Float64, zr::ZoomRegion, center::XY{Int})
-    # Calculate size of new view
-    fsize = XY(zr.fullview.x.right,zr.fullview.y.right) # full size
-    csize = XY(Int(round(fsize.x/z)), Int(round(fsize.y/z))) # new current size
-    # Calculate center point of new view
-    offset = XY(center.x-Int(round(csize.x/2)),
-                center.y-Int(round(csize.y/2))) # offset of cv
-    # Limit offset
-    if offset.x < 0
-        y = offset.y
-        offset = XY(0, y)
-    elseif offset.x > (fsize.x-csize.x)
-        y = offset.y
-        offset = XY(fsize.x-csize.x, y)
-    end
-    if offset.y < 0
-        x = offset.x
-        offset = XY(x, 0)
-    elseif offset.y > (fsize.y-csize.y)
-        x = offset.x
-        offset = XY(x, fsize.y-csize.y)
-    end
-    
-    return (offset.y+1..offset.y+csize.y, offset.x+1..offset.x+csize.x)
-end # return value can be pushed to a zr
-
-# Sets default center to be the middle of the cv
-function zoom_percent(z::Float64, zr::ZoomRegion)
-    # Calculate cv
-    return zoom_percent(z,zr,find_center(zr))
-end
-
-# Finds rounded center point of the current view of given ZoomRegion
-function find_center(zr::ZoomRegion)
-    range = zr.currentview
-    csize = XY(range.x.right-range.x.left,range.y.right-range.y.left)
-    center = XY(range.x.left+Int(floor(csize.x/2)),
-                range.y.left+Int(floor(csize.y/2)))
-    return center
-end
-
-# Zoom tracking
-const zpercents = [1.0,1.2,1.5,2.0,2.5,3.0,4.0,8.0]
-
-# For a given zoom region, finds the level that zoom_percent actually zooms to,
-# for every item in zpercents. Used in zoom tracking.
-function actual_zpercents_x(zr::ZoomRegion)
-    levels = zoom_percent.(zpercents, zr) #returns an array of tuples
-    zp_actual = []
-    for i in 1:length(levels)
-        push!(zp_actual, IntervalSets.width(zr.fullview.x)/
-              IntervalSets.width(levels[i][2]))
-    end
-    return zp_actual
-end
-
-# Returns index of next zoom level after current zoom level in zpercents.
-function next_zoom(ctx::ImageContext)
-    xzoom=IntervalSets.width(value(ctx.zr).fullview.x)/IntervalSets.width(value(ctx.zr).currentview.x)
-    zp_actual = actual_zpercents_x(value(ctx.zr))
-    index = 1
-    for n in zp_actual
-        if n > xzoom
-            break
-        end
-        index += 1
-    end
-    return index
-end
-
-# Returns index of zoom level before current in zpercents.
-function prev_zoom(ctx::ImageContext)
-    zr = value(ctx.zr)
-    xzoom=IntervalSets.width(zr.fullview.x)/IntervalSets.width(zr.currentview.x)
-    zp_actual = actual_zpercents_x(value(ctx.zr))
-    index = length(zpercents)
-    for n in zp_actual[end:-1:1] # loop backwards
-        if n < xzoom
-            break
-        end
-        index -= 1
-    end
-    return index
-end
-
-# Performs proportional zoom in and tracks zoom level using zpercents.
-function zoom_in(ctx::ImageContext, center::XY{Int})
-    i = ctx.zl
-    zr = ctx.zr
-    if 1 <= i <= length(zpercents)
-        if i < length(zpercents)
-            i += 1
-            push!(zr, zoom_percent(zpercents[i],value(zr),center))
-        end
-    else
-        i = next_zoom(value(zr))
-        push!(zr, zoom_percent(zpercents[i],value(zr),center))
-    end
-    ctx.zl = i
-    ctx.zr = zr
-end
-
-# Automatically centered zoom_in
-function zoom_in(ctx::ImageContext)
-    zoom_in(ctx, find_center(value(ctx.zr)))
-end
-
-# Performs proportional zoom out and tracks zoom level using zpercents.
-function zoom_out(ctx::ImageContext, center::XY{Int})
-    i = ctx.zl
-    zr = ctx.zr
-    if 1 <= i <= length(zpercents)
-        if i > 1
-            i -= 1
-            push!(zr, zoom_percent(zpercents[i],value(zr),center))
-        end
-    else
-        i = prev_zoom(value(zr))
-        push!(zr, zoom_percent(zpercents[i],value(zr),center))
-    end
-    ctx.zl = i
-    ctx.zr = zr
-end
-
-# Automatically centered zoom_out
-function zoom_out(ctx::ImageContext)
-    zoom_out(ctx, find_center(value(ctx.zr)))
-end
-
-# Performs proportional, centered zoom to level entered
-function zoom_to(ctx::ImageContext, z::Float64)
-    ctx.zl = -1
-    push!(ctx.zr, zoom_percent(z,value(ctx.zr)))
-    nothing
-end
-
-# Mouse actions for zoom
-function init_zoom_click(ctx::ImageContext)
-    c = ctx.canvas
-    zr = ctx.zr
-    enabled = Signal(true)
-    # Left click calls zoom_in() centered on pixel clicked
-    # Right click calls zoom_out() centered on pixel clicked
-    dragging = Signal(false)
-    moved = Signal(false)
-    start = Signal(XY{UserUnit}(-1,-1))
-    start_view = Signal(ZoomRegion((1:1,1:1)))
-
-    dummybtn = MouseButton{UserUnit}()
-    sigclick = map(filterwhen(enabled,dummybtn,c.mouse.buttonpress)) do btn
-        push!(dragging,true)
-        push!(moved,false)
-        push!(start,btn.position)
-        push!(start_view,value(zr))
-    end
-
-    sigdrag = map(filterwhen(dragging, dummybtn, c.mouse.motion)) do btn
-        value(start_view) != value(zr) && push!(moved,true)
-        nothing
-    end
-
-    sigend = map(filterwhen(dragging,dummybtn,c.mouse.buttonrelease)) do btn
-        if !value(moved)
-            #println("modifiers=",btn.modifiers)
-            if btn.button == 1 && btn.modifiers == 256 #if left click & no modifiers
-                center = XY(Int(round(Float64(btn.position.x))),
-                            Int(round(Float64(btn.position.y))))
-                zoom_in(ctx, center) 
-            elseif btn.button == 3 || btn.modifiers == 260 # right click/ctrl
-                center = XY(Int(round(Float64(btn.position.x))),
-                            Int(round(Float64(btn.position.y))))
-                zoom_out(ctx, center)
-            end
-        end
-        push!(dragging,false) # no longer dragging
-        push!(moved,false) # reset moved
-    end
-    append!(c.preserved, [moved, sigclick, sigdrag, sigend])
-    Dict("enabled"=>enabled)
-end
+include("zoom_interaction.jl")
+include("rectangle_selection.jl")
+include("freehand_selection.jl")
 
 ## Sets up an image in a separate window with the ability to adjust view
 function init_gui(image::AbstractArray; name="Tinker")
@@ -514,27 +249,47 @@ function init_gui(image::AbstractArray; name="Tinker")
 
     # Holds data about rectangular selection
     rect = Signal(Rectangle())
-    # Creates RectHandle object dependent on rect
-    recthandle = map(rect) do r
-        RectHandle(r)
-    end
-    # Holds view enclosed by rectangle
-    rectview = map(rect) do r
-        if isempty(r)
-            view(image, 1:size(image,1), 1:size(image,2))
-        else
-            xleft,xright = Int(floor(r.x)),Int(floor(r.x+r.w))
-            yleft,yright = Int(floor(r.y)),Int(floor(r.y+r.h))
-            (xleft < 1) && (xleft = 1)
-            (yleft < 1) && (yleft = 1)
-            (xright > size(image,2)) && (xright = size(image,2))
-            (yright > size(image,1)) && (yright = size(image,1))
-            view(image, yleft:yright, xleft:xright)
-        end
+    points = map(rect) do r
+        r.pts
     end
 
+    # Context
+    imagectx = ImageContext(image, c, zr, 1, Dict("dummy"=>Signal(false)),
+                            rect, points, Signal(view(image,1:size(image,2),
+                                                      1:size(image,1))))
+
+    rectview = map(imagectx.points) do pts
+        if ispolygon(pts)
+            x_min,x_max = minimum(map(n->n.x,pts)),maximum(map(n->n.x,pts))
+            y_min,y_max =minimum(map(n->n.y,pts)),maximum(map(n->n.y,pts))
+            get_view(image,x_min,y_min,x_max,y_max)
+        else
+            view(image,1:size(image,2),1:size(image,1))
+        end
+    end
+    imagectx.rectview = rectview
+        
+    
+    # Mouse actions
+    pandrag = init_pan_drag(c, zr) # dragging moves image
+    zoomclick = init_zoom_click(imagectx) # clicking zooms image
+    rectselect = init_rect_select(imagectx) # click + drag modifies rect selection
+    freehand = init_freehand_select(imagectx)
+    movepol = init_move_polygon(imagectx)
+    polysel = init_polygon_select(imagectx)
+    push!(pandrag["enabled"],false)
+    push!(zoomclick["enabled"],false)
+    push!(rectselect["enabled"],false)
+    push!(freehand["enabled"],false)
+    push!(movepol["enabled"],false)
+    push!(polysel["enabled"],false)
+
+    imagectx.mouseactions = Dict("pandrag"=>pandrag["enabled"],"zoomclick"=>zoomclick["enabled"],"rectselect"=>rectselect["enabled"],"freehand"=>freehand["enabled"],"movepol"=>movepol["enabled"],"polysel"=>polysel["enabled"])
+    
+    append!(c.preserved, [pandrag, zoomclick, rectselect, freehand, movepol])
+
     # draw
-    redraw = draw(c, imagesig, zr, viewdim, recthandle) do cnvs, img, r, vd, rh
+    redraw = draw(c, imagesig, zr, viewdim, imagectx.points) do cnvs, img, r, vd, pt
         copy!(cnvs, img) # show image on canvas at current zoom level
         set_coordinates(cnvs, r) # set canvas coordinates to zr
         ctx = getgc(cnvs)
@@ -543,26 +298,11 @@ function init_gui(image::AbstractArray; name="Tinker")
             drawrect(ctx, vd[1], colorant"blue", 2.0)
             drawrect(ctx, vd[2], colorant"blue", 2.0)
         end
-        d = 8*(IntervalSets.width(r.currentview.x)/IntervalSets.width(r.fullview.x)) # physical dimension of handle
-        drawrecthandle(ctx, rh, d, colorant"blue", 1.0)
+        #d = 8*(IntervalSets.width(r.currentview.x)/IntervalSets.width(r.fullview.x)) # physical dimension of handle
+        drawline(ctx, pt, colorant"yellow", 1.0)
     end
 
     showall(win);
-
-    # Context
-    imagectx = ImageContext(image, c, zr, 1, Signal(false), Signal(false),
-                            Signal(false), rect, rectview)
-    
-    # Mouse actions
-    pandrag = init_pan_drag(c, zr) # dragging moves image
-    zoomclick = init_zoom_click(imagectx) # clicking zooms image
-    rectselect = init_rect_select(imagectx) # click + drag modifies rect selection
-    
-    imagectx.pandrag = pandrag["enabled"]
-    imagectx.zoomclick = zoomclick["enabled"]
-    imagectx.rectselect = rectselect["enabled"]
-    
-    append!(c.preserved, [zoomclick, pandrag, rectselect])
     
     push!(img_ctxs, push!(value(img_ctxs), imagectx))
     return imagectx
@@ -580,17 +320,31 @@ active_context = map(img_ctxs) do ic # signal dependent on img_ctxs
 end
 
 function set_mode(ctx::ImageContext, mode::Int)
-    push!(ctx.pandrag, false)
-    push!(ctx.zoomclick, false)
-    push!(ctx.rectselect, false)
+    push!(ctx.mouseactions["pandrag"], false)
+    push!(ctx.mouseactions["zoomclick"], false)
+    push!(ctx.mouseactions["rectselect"], false)
+    push!(ctx.mouseactions["freehand"], false)
+    push!(ctx.mouseactions["movepol"],false)
+    push!(ctx.mouseactions["polysel"],false)
     if mode == 1 # turn on zoom controls
         println("Zoom mode")
-        push!(ctx.pandrag, true)
-        push!(ctx.zoomclick, true)
+        push!(ctx.mouseactions["pandrag"], true)
+        push!(ctx.mouseactions["zoomclick"], true)
     elseif mode == 2 # turn on rectangular region selection controls
         println("Rectangle mode")
-        push!(ctx.rectselect, true)
+        push!(ctx.mouseactions["rectselect"], true)
+    elseif mode == 3 # freehand select
+        println("Freehand mode")
+        push!(ctx.mouseactions["freehand"],true)
+        println("Move mode")
+        push!(ctx.mouseactions["movepol"],true)
+    elseif mode == 4 # polygon select
+        println("Polygon mode")
+        push!(ctx.mouseactions["polysel"],true)
+        push!(ctx.mouseactions["movepol"],true)
     end
 end
+
+set_mode(sig::Signal, mode) = set_mode(value(sig), mode)
 
 end # module
