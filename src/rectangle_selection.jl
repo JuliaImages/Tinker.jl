@@ -173,6 +173,8 @@ function init_rect_select(ctx::ImageContext)
         nothing
     end
 
+    push!(ctx.points, [])
+
     append!(c.preserved, [sigstart, sigdrag, sigend])
     Dict("enabled"=>enabled)
 end

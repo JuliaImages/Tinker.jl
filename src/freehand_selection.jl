@@ -27,6 +27,8 @@ function init_freehand_select(ctx::ImageContext)
         end
     end
 
+    push!(ctx.points, [])
+
     append!(c.preserved, [sigstart, sigdrag, sigend])
     Dict("enabled"=>enabled)
 end
@@ -36,26 +38,42 @@ function init_polygon_select(ctx::ImageContext)
     c = ctx.canvas
 
     dummybtn = MouseButton{UserUnit}()
-    push!(ctx.points, [])
+    num_pts = Signal(0)
 
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
-        if ispolygon(value(ctx.points)) && !isinside(Point(btn.position),Point.(value(ctx.points)))
+        if (ispolygon(value(ctx.points)) && !isinside(Point(btn.position),Point.(value(ctx.points)))) # resets ctx.points
             push!(ctx.points,[])
-            Reactive.run_till_now()
-        end
-        if !ispolygon(value(ctx.points))
-            next = btn.position
-            if length(value(ctx.points)) > 3 # and click is near start
-                next = value(ctx.points)[1]
+            push!(num_pts, 0)
+        elseif isempty(value(ctx.points)) # adds first point
+            push!(ctx.points, [btn.position])
+            push!(num_pts,1)
+        elseif !ispolygon(value(ctx.points)) # adds to polygon
+            if (length(value(ctx.points)) > 3) && (value(ctx.points)[1].x - 5 <= btn.position.x <= value(ctx.points)[1].x + 5) && value(ctx.points)[1].y - 5 <= btn.position.y <= value(ctx.points)[1].y + 5 # finishes polygon if click near start
+                push!(ctx.points,
+                      push!(value(ctx.points)[1:end-1],value(ctx.points)[1]))
+                push!(num_pts, length(value(ctx.points)))
+            else # adds to polygon
+                push!(ctx.points,push!(value(ctx.points)[1:end-1],btn.position))
+                push!(num_pts, length(value(ctx.points)))
             end
-            push!(ctx.points, push!(value(ctx.points), next))
         end
+        nothing
     end
 
     sigmove = map(filterwhen(enabled,dummybtn, c.mouse.motion)) do btn
-        
+        # makes working point
+        if !isempty(value(ctx.points)) && !ispolygon(value(ctx.points))
+            push!(ctx.points, push!(value(ctx.points)[1:value(num_pts)], btn.position))
+        end
+        nothing
     end
+
+    push!(ctx.points, [])
 
     append!(c.preserved, [sigstart, sigmove])
     Dict("enabled"=>enabled)
 end
+
+# add handle actions
+# draw square around region near start
+# draw handles

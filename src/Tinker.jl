@@ -161,8 +161,13 @@ end
 # Moves polygon to a given location
 function move_polygon_to(p::AbstractArray, pt::XY)
     # find diff b/t start & pt; add diff to all in p
-    diff = XY(pt.x-p[1].x,pt.y-p[1].y)
-    map(n -> XY(n.x+diff.x,n.y+diff.y),p)
+    if ispolygon(p)
+        diff = XY(pt.x-p[1].x,pt.y-p[1].y)
+        map(n -> XY(n.x+diff.x,n.y+diff.y),p)
+    else
+        #println("Not a polygon")
+        return p
+    end
 end
 
 # Converts an XY to a Point
@@ -180,14 +185,12 @@ function init_move_polygon(ctx::ImageContext)
 
     dummybutton = MouseButton{UserUnit}()
     sigstart = map(filterwhen(enabled,dummybutton,c.mouse.buttonpress)) do btn
-        if ispolygon(value(ctx.points)) # prevents conflict with init_freehand_select
-            if isinside(Point(btn.position), Point.(value(pts)))
-                push!(dragging,true)
-                #push!(ctx.points, move_polygon_to(value(ctx.points),
-                                                  #btn.position))
-                push!(diff, XY(btn.position.x-value(ctx.points)[1].x,
-                               btn.position.y-value(ctx.points)[1].y))
-            end
+        if ispolygon(value(ctx.points)) && isinside(Point(btn.position), Point.(value(pts)))
+            push!(dragging,true)
+            #push!(ctx.points, move_polygon_to(value(ctx.points),
+            #btn.position))
+            push!(diff, XY(btn.position.x-value(ctx.points)[1].x,
+                           btn.position.y-value(ctx.points)[1].y))
         end
         nothing
     end
@@ -255,7 +258,7 @@ function init_gui(image::AbstractArray; name="Tinker")
 
     # Context
     imagectx = ImageContext(image, c, zr, 1, Dict("dummy"=>Signal(false)),
-                            rect, points, Signal(view(image,1:size(image,2),
+                            rect, Signal([]), Signal(view(image,1:size(image,2),
                                                       1:size(image,1))))
 
     rectview = map(imagectx.points) do pts
@@ -286,7 +289,7 @@ function init_gui(image::AbstractArray; name="Tinker")
 
     imagectx.mouseactions = Dict("pandrag"=>pandrag["enabled"],"zoomclick"=>zoomclick["enabled"],"rectselect"=>rectselect["enabled"],"freehand"=>freehand["enabled"],"movepol"=>movepol["enabled"],"polysel"=>polysel["enabled"])
     
-    append!(c.preserved, [pandrag, zoomclick, rectselect, freehand, movepol])
+    append!(c.preserved, [pandrag, zoomclick, rectselect, freehand, movepol,polysel])
 
     # draw
     redraw = draw(c, imagesig, zr, viewdim, imagectx.points) do cnvs, img, r, vd, pt
