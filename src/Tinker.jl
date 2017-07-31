@@ -179,7 +179,7 @@ end
 function init_move_polygon(ctx::ImageContext)
     c = ctx.canvas
     pts = ctx.points
-    enabled = Signal(true)
+    enabled = Signal(false)
     dragging = Signal(false)
     diff = Signal(XY(NaN,NaN))
 
@@ -256,10 +256,11 @@ function init_gui(image::AbstractArray; name="Tinker")
         r.pts
     end
 
+    # Placeholder dictionary for context
+    dummydict = Dict("pandrag"=>Signal(false),"zoomclick"=>Signal(false),"rectselect"=>Signal(false),"freehand"=>Signal(false),"movepol"=>Signal(false),"polysel"=>Signal(false))
     # Context
-    imagectx = ImageContext(image, c, zr, 1, Dict("dummy"=>Signal(false)),
-                            rect, Signal([]), Signal(view(image,1:size(image,2),
-                                                      1:size(image,1))))
+    imagectx = ImageContext(image, c, zr, 1, dummydict, rect, Signal([]),
+                            Signal(view(image,1:size(image,2),1:size(image,1))))
 
     rectview = map(imagectx.points) do pts
         if ispolygon(pts)
@@ -271,7 +272,6 @@ function init_gui(image::AbstractArray; name="Tinker")
         end
     end
     imagectx.rectview = rectview
-        
     
     # Mouse actions
     pandrag = init_pan_drag(c, zr) # dragging moves image
@@ -344,7 +344,7 @@ function set_mode(ctx::ImageContext, mode::Int)
     elseif mode == 4 # polygon select
         println("Polygon mode")
         push!(ctx.mouseactions["polysel"],true)
-        push!(ctx.mouseactions["movepol"],true)
+        #push!(ctx.mouseactions["movepol"],true)
     end
 end
 
