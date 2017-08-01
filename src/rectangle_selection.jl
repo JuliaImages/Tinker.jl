@@ -98,6 +98,7 @@ function init_rect_select(ctx::ImageContext)
 
     dummybtn = MouseButton{UserUnit}()
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
+        println("Starting")
         push!(dragging, true)
         # If there is already a rectangle in the environment, begin to modify
         if !isempty(value(recthandle))

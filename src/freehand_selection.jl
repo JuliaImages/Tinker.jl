@@ -1,39 +1,54 @@
 function init_freehand_select(ctx::ImageContext)
     c = ctx.canvas
     enabled = Signal(true)
-    dragging = Signal(false)
+    drawing = Signal(false)
+    moving = Signal(false)
+    diff = Signal(XY(NaN,NaN))
 
     dummybtn = MouseButton{UserUnit}()
     
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
         if !ispolygon(value(ctx.points)) || !isinside(Point(btn.position), Point.(value(ctx.points))) # prevents conflict with init_move_polygon
-            push!(dragging, true)
+            push!(drawing, true)
             push!(ctx.shape, Rectangle()) # some identifier of type of selection
             push!(ctx.points, [])
             push!(ctx.points, [btn.position])
+        elseif ispolygon(value(ctx.points)) && isinside(Point(btn.position), Point.(value(ctx.points)))
+            push!(moving,true)
+            push!(diff, XY(btn.position.x-value(ctx.points)[1].x,
+                           btn.position.y-value(ctx.points)[1].y))
         end
+        nothing
     end
 
-    sigdrag = map(filterwhen(dragging, dummybtn, c.mouse.motion)) do btn
+    sigdraw = map(filterwhen(drawing, dummybtn, c.mouse.motion)) do btn
         push!(ctx.points, push!(value(ctx.points), btn.position))
+        nothing
     end
 
-    sigend = map(filterwhen(dragging, dummybtn, c.mouse.buttonrelease)) do btn
+    sigmove = map(filterwhen(moving, dummybtn, c.mouse.motion)) do btn
+        push!(ctx.points, move_polygon_to(value(ctx.points),XY(btn.position.x-value(diff).x, btn.position.y-value(diff).y)))
+        nothing
+    end
+
+    sigend = map(filterwhen(enabled, dummybtn, c.mouse.buttonrelease)) do btn
         # end
-        push!(dragging,false)
-        #push!(ctx.extrema, (XY(x_min,y_min),XY(x_max,y_max)))
+        push!(drawing,false)
+        push!(moving,false)
+        push!(diff, XY(NaN,NaN))
         if !isempty(value(ctx.points))
             push!(ctx.points, push!(value(ctx.points), value(ctx.points)[1]))
         end
+        nothing
     end
 
     push!(ctx.points, [])
 
-    append!(c.preserved, [sigstart, sigdrag, sigend])
+    append!(c.preserved, [sigstart, sigdraw, sigmove, sigend])
     Dict("enabled"=>enabled)
 end
 
-function is_point(pt::XY, p)
+function near_vertex(pt::XY, p)
     # returns index of nearby point
     for i in 1:length(p)
         if (p[i].x-5 <= pt.x <= p[i].x+5) && (p[i].y-5 <= pt.y <= p[i].y+5)
@@ -44,7 +59,7 @@ function is_point(pt::XY, p)
 end
 
 function init_polygon_select(ctx::ImageContext)
-    enabled = Signal(true)
+    enabled = Signal(false)
     c = ctx.canvas
 
     dummybtn = MouseButton{UserUnit}()
@@ -54,21 +69,32 @@ function init_polygon_select(ctx::ImageContext)
     num_pts = Signal(0)
     modhandle = Signal(-1)
     diff = Signal(XY(NaN,NaN))
+    mouse_motion = map(enabled,building) do e,b
+        #@show e,b
+        if e == true && b == true
+            true
+        else
+            false
+        end
+    end
 
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
+        #println("Polygon enabled")
         if (ispolygon(value(ctx.points)) &&
-            is_point(btn.position, value(ctx.points)) != -1)
+            near_vertex(btn.position, value(ctx.points)) != -1)
             # modification actions
             #println("Modifying")
             push!(modifying,true)
             push!(building,false)
-            push!(modhandle,is_point(btn.position,value(ctx.points)))
+            push!(moving,false)
+            push!(modhandle,near_vertex(btn.position,value(ctx.points)))
         elseif (ispolygon(value(ctx.points)) &&
                 isinside(Point(btn.position),Point.(value(ctx.points))))
             # moving actions
             #println("Moving")
             push!(moving,true)
             push!(building,false)
+            push!(modifying,false)
             push!(diff, XY(btn.position.x-value(ctx.points)[1].x,
                            btn.position.y-value(ctx.points)[1].y))
         elseif (ispolygon(value(ctx.points)) &&
@@ -103,7 +129,8 @@ function init_polygon_select(ctx::ImageContext)
     end
 
     # When building the polygon, makes working point
-    sigbuild = map(filterwhen(building,dummybtn, c.mouse.motion)) do btn
+    sigbuild = map(filterwhen(mouse_motion,dummybtn, c.mouse.motion)) do btn
+        #println(".")
         if !isempty(value(ctx.points)) && !ispolygon(value(ctx.points))
             push!(ctx.points,
                   push!(value(ctx.points)[1:value(num_pts)], btn.position))
@@ -138,6 +165,10 @@ function init_polygon_select(ctx::ImageContext)
 
     # Resets signals
     sigend = map(filterwhen(enabled,dummybtn,c.mouse.buttonrelease)) do btn
+        #println(".")
+        #@show value(moving)
+        #@show value(modifying)
+        #@show value(mouse_motion)
         # resets signals
         push!(moving,false)
         push!(modifying,false)
@@ -152,7 +183,6 @@ function init_polygon_select(ctx::ImageContext)
 end
 
 # figure out the VertexException for isinside
-# figure out how to turn off moving whole polygon when I want to be moving just the handle instead -- the bug is in the Reactive delay
 
 # draw square around region near start
 # draw handles
