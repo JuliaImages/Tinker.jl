@@ -8,10 +8,10 @@ function init_freehand_select(ctx::ImageContext)
     dummybtn = MouseButton{UserUnit}()
     
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
-        if !ispolygon(value(ctx.points)) || !isinside(Point(btn.position), Point.(value(ctx.points))) # prevents conflict with init_move_polygon
+        if !ispolygon(value(ctx.points)) || !isinside(Point(btn.position), Point.(value(ctx.points)))
             push!(drawing, true)
             push!(ctx.shape, Rectangle()) # some identifier of type of selection
-            push!(ctx.points, [])
+            push!(ctx.points, Vector{XY{Float64}}[])
             push!(ctx.points, [btn.position])
         elseif ispolygon(value(ctx.points)) && isinside(Point(btn.position), Point.(value(ctx.points)))
             push!(moving,true)
@@ -42,7 +42,7 @@ function init_freehand_select(ctx::ImageContext)
         nothing
     end
 
-    push!(ctx.points, [])
+    push!(ctx.points, Vector{XY{Float64}}[])
 
     append!(c.preserved, [sigstart, sigdraw, sigmove, sigend])
     Dict("enabled"=>enabled)
@@ -69,60 +69,41 @@ function init_polygon_select(ctx::ImageContext)
     num_pts = Signal(0)
     modhandle = Signal(-1)
     diff = Signal(XY(NaN,NaN))
-    mouse_motion = map(enabled,building) do e,b
-        #@show e,b
-        if e == true && b == true
-            true
-        else
-            false
-        end
-    end
+    mouse_motion = map(&,enabled,building)
 
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
-        #println("Polygon enabled")
-        if (ispolygon(value(ctx.points)) &&
-            near_vertex(btn.position, value(ctx.points)) != -1)
+        pts = value(ctx.points)
+        if (ispolygon(pts) && near_vertex(btn.position, pts) != -1)
             # modification actions
-            #println("Modifying")
             push!(modifying,true)
             push!(building,false)
             push!(moving,false)
-            push!(modhandle,near_vertex(btn.position,value(ctx.points)))
-        elseif (ispolygon(value(ctx.points)) &&
-                isinside(Point(btn.position),Point.(value(ctx.points))))
+            push!(modhandle,near_vertex(btn.position,pts))
+        elseif (ispolygon(pts) && isinside(Point(btn.position),Point.(pts)))
             # moving actions
-            #println("Moving")
             push!(moving,true)
             push!(building,false)
             push!(modifying,false)
-            push!(diff, XY(btn.position.x-value(ctx.points)[1].x,
-                           btn.position.y-value(ctx.points)[1].y))
-        elseif (ispolygon(value(ctx.points)) &&
-                !isinside(Point(btn.position),Point.(value(ctx.points))))
-            #println("Resetting")
+            push!(diff, XY(btn.position.x-pts[1].x,btn.position.y-pts[1].y))
+        elseif (ispolygon(pts) && !isinside(Point(btn.position),Point.(pts)))
             push!(building,true)
-            # resets ctx.points
-            push!(ctx.points,[])
+            # reset ctx.points
+            push!(ctx.points,Vector{XY{Float64}}[])
             push!(num_pts, 0)
-        elseif isempty(value(ctx.points)) # adds first point
-            #println("First point")
+        elseif isempty(pts) # adds first point
             push!(building,true)
             push!(ctx.points, [btn.position])
             push!(num_pts,1)
-        elseif !ispolygon(value(ctx.points)) # adds to polygon
-            if (length(value(ctx.points)) > 3 &&
-                value(ctx.points)[1].x - 5 <= btn.position.x <=
-                value(ctx.points)[1].x + 5 && value(ctx.points)[1].y - 5
-                <= btn.position.y <= value(ctx.points)[1].y + 5)
+        elseif !ispolygon(pts) # adds to polygon
+            if (length(pts) > 3 && pts[1].x - 5 <= btn.position.x <=
+                pts[1].x + 5 && pts[1].y - 5 <= btn.position.y <= pts[1].y + 5)
                 # finishes polygon if click near start
-                #println("Finishing")
-                push!(ctx.points,
-                      push!(value(ctx.points)[1:end-1],value(ctx.points)[1]))
-                push!(num_pts, length(value(ctx.points)))
-            else # adds to polygon
-                #println("Adding")
-                push!(ctx.points,push!(value(ctx.points)[1:end-1],btn.position))
-                push!(num_pts, length(value(ctx.points)))
+                pts[end] = pts[1]
+                push!(ctx.points,pts)
+                push!(num_pts, length(pts))
+            else # add to polygon
+                value(ctx.points)[end] = btn.position
+                push!(num_pts, length(pts))
             end
         end
         nothing
@@ -130,7 +111,6 @@ function init_polygon_select(ctx::ImageContext)
 
     # When building the polygon, makes working point
     sigbuild = map(filterwhen(mouse_motion,dummybtn, c.mouse.motion)) do btn
-        #println(".")
         if !isempty(value(ctx.points)) && !ispolygon(value(ctx.points))
             push!(ctx.points,
                   push!(value(ctx.points)[1:value(num_pts)], btn.position))
@@ -140,7 +120,6 @@ function init_polygon_select(ctx::ImageContext)
 
     # Moves polygon
     sigmove = map(filterwhen(moving,dummybtn,c.mouse.motion)) do btn
-        # move polygon
         push!(ctx.points, move_polygon_to(value(ctx.points),XY(btn.position.x-value(diff).x,btn.position.y-value(diff).y)))
         nothing
     end
@@ -148,41 +127,30 @@ function init_polygon_select(ctx::ImageContext)
     # Modifies polygon by handle
     sigmodify = map(filterwhen(modifying,dummybtn,c.mouse.motion)) do btn
         # moves clicked point
+        pts = value(ctx.points)
         if value(modhandle) != 1 && value(modhandle) != -1
             # move a middle point
-            A = value(ctx.points)
-            splice!(A, value(modhandle), [btn.position])
-            push!(ctx.points,A)
+            pts[value(modhandle)] = btn.position
+            push!(ctx.points, pts)
         elseif value(modhandle) != -1
             # move both first and last point
-            A = value(ctx.points)[2:end-1]
-            unshift!(A,btn.position)
-            push!(A,btn.position)
-            push!(ctx.points,A)
+            pts[1] = btn.position
+            pts[end] = btn.position
+            push!(ctx.points,pts)
         end
         nothing
     end
 
     # Resets signals
     sigend = map(filterwhen(enabled,dummybtn,c.mouse.buttonrelease)) do btn
-        #println(".")
-        #@show value(moving)
-        #@show value(modifying)
-        #@show value(mouse_motion)
-        # resets signals
         push!(moving,false)
         push!(modifying,false)
         push!(diff, XY(NaN,NaN))
         push!(modhandle, -1)
     end
     
-    push!(ctx.points, [])
+    push!(ctx.points, Vector{XY{Float64}}[])
     
     append!(c.preserved, [sigstart, sigbuild, sigmove, sigmodify, sigend])
     Dict("enabled"=>enabled)
 end
-
-# figure out the VertexException for isinside
-
-# draw square around region near start
-# draw handles

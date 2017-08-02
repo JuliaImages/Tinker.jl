@@ -82,12 +82,8 @@ function init_rect_select(ctx::ImageContext)
     
     # Build rectangle & points array
     pts = Signal((XY{UserUnit}(-1.0,-1.0),XY{UserUnit}(-1.0,-1.0)))
-    rect = map(pts) do p
-        Rectangle(p[1],p[2])
-    end
-    recthandle = map(rect) do r
-        RectHandle(r)
-    end
+    rect = map(p->Rectangle(p[1],p[2]),pts)
+    recthandle = map(r->RectHandle(r),rect)
     ctx.points = map(rect) do r
         [XY(r.x,r.y),XY(r.x+r.w,r.y),XY(r.x+r.w,r.y+r.h),XY(r.x,r.y+r.h),
          XY(r.x,r.y)]
@@ -171,7 +167,7 @@ function init_rect_select(ctx::ImageContext)
         nothing
     end
 
-    push!(ctx.points, [])
+    push!(ctx.points, Vector{XY{Float64}}[])
 
     append!(c.preserved, [sigstart, sigmod, sigmove, siginit, sigend])
     Dict("enabled"=>enabled)
