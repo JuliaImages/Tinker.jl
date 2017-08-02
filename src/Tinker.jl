@@ -135,12 +135,12 @@ end
 
 struct PolyHandle
     p::Polygon
-    h::Tuple
+    h::AbstractArray
 end
 
 function PolyHandle(p::Polygon)
     # makes polyhandle
-    h = (Handle(p,1))
+    h = [Handle(p,1)]
     for i in 2:length(p.pts)
         push!(h,Handle(p,i))
     end
@@ -243,17 +243,6 @@ function init_gui(image::AbstractArray; name="Tinker")
     imagectx=ImageContext(image,c,zr,1,dummydict,Signal(Rectangle()),Signal([]),
                           Signal(view(image,1:size(image,2),1:size(image,1))))
     
-    rectview = map(imagectx.points) do pts
-        if ispolygon(pts)
-            x_min,x_max = minimum(map(n->n.x,pts)),maximum(map(n->n.x,pts))
-            y_min,y_max =minimum(map(n->n.y,pts)),maximum(map(n->n.y,pts))
-            get_view(image,x_min,y_min,x_max,y_max)
-        else
-            view(image,1:size(image,2),1:size(image,1))
-        end
-    end
-    imagectx.rectview = rectview
-    
     # Mouse actions
     pandrag = init_pan_drag(c, zr) # dragging moves image
     zoomclick = init_zoom_click(imagectx) # clicking zooms image
@@ -267,6 +256,17 @@ function init_gui(image::AbstractArray; name="Tinker")
     push!(polysel["enabled"],false)
 
     imagectx.mouseactions = Dict("pandrag"=>pandrag["enabled"],"zoomclick"=>zoomclick["enabled"],"rectselect"=>rectselect["enabled"],"freehand"=>freehand["enabled"],"polysel"=>polysel["enabled"])
+
+    rectview = map(imagectx.points) do pts
+        if ispolygon(pts)
+            x_min,x_max = minimum(map(n->n.x,pts)),maximum(map(n->n.x,pts))
+            y_min,y_max =minimum(map(n->n.y,pts)),maximum(map(n->n.y,pts))
+            get_view(image,x_min,y_min,x_max,y_max)
+        else
+            view(image,1:size(image,2),1:size(image,1))
+        end
+    end
+    imagectx.rectview = rectview
     
     append!(c.preserved, [pandrag,zoomclick,rectselect,freehand,polysel])
 
