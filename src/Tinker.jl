@@ -196,41 +196,6 @@ function Point(p::XY)
     Point(p.x,p.y)
 end
 
-# Mouse actions to move any polygon
-function init_move_polygon(ctx::ImageContext)
-    c = ctx.canvas
-    pts = ctx.points
-    enabled = Signal(false)
-    dragging = Signal(false)
-    diff = Signal(XY(NaN,NaN))
-
-    dummybutton = MouseButton{UserUnit}()
-    sigstart = map(filterwhen(enabled,dummybutton,c.mouse.buttonpress)) do btn
-        if ispolygon(value(ctx.points)) && isinside(Point(btn.position), Point.(value(pts)))
-            push!(dragging,true)
-            #push!(ctx.points, move_polygon_to(value(ctx.points),
-            #btn.position))
-            push!(diff, XY(btn.position.x-value(ctx.points)[1].x,
-                           btn.position.y-value(ctx.points)[1].y))
-        end
-        nothing
-    end
-
-    sigdrag = map(filterwhen(dragging,dummybutton,c.mouse.motion)) do btn
-        push!(ctx.points, move_polygon_to(value(ctx.points),XY(btn.position.x-value(diff).x, btn.position.y-value(diff).y)))
-        nothing
-    end
-
-    sigend = map(filterwhen(dragging,dummybutton,c.mouse.buttonrelease)) do btn
-        push!(dragging,false)
-        push!(diff, XY(NaN,NaN))
-        nothing
-    end
-    
-    append!(c.preserved, [sigstart, sigdrag, sigend])
-    Dict("enabled"=>enabled)
-end
-
 include("zoom_interaction.jl")
 include("rectangle_selection.jl")
 include("freehand_selection.jl")
@@ -352,8 +317,6 @@ function set_mode(ctx::ImageContext, mode::Int)
     elseif mode == 3 # freehand select
         println("Freehand mode")
         push!(ctx.mouseactions["freehand"],true)
-        println("Move mode")
-        #push!(ctx.mouseactions["movepol"],true)
     elseif mode == 4 # polygon select
         println("Polygon mode")
         push!(ctx.mouseactions["polysel"],true)

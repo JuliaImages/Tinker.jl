@@ -1,9 +1,3 @@
-# Returns true if a handle is clicked
-function is_clicked(pt::XY, handle::Handle, d)
-    return (handle.x - d/2 < pt.x < handle.x + d/2) &&
-        (handle.y - d/2 < pt.y < handle.y + d/2)
-end
-
 # Returns the handle near click or an empty handle
 function nearby_handle(pt::XY, rh::RectHandle)
     for i in 1:length(rh.h)
