@@ -4,6 +4,17 @@ function is_clicked(pt::XY, handle::Handle, d)
         (handle.y - d/2 < pt.y < handle.y + d/2)
 end
 
+# Returns the handle near click or an empty handle
+function nearby_handle(pt::XY, rh::RectHandle)
+    for i in 1:length(rh.h)
+        if (rh.h[i].x-5 <= pt.x <= rh.h[i].x+5 &&
+            rh.h[i].y-5 <= pt.y <= rh.h[i].y+5)
+            return rh.h[i]
+        end
+    end
+    return Handle()
+end
+
 # Given a RectHandle and a position, returns the corresponding Handle
 function get_handle(rh::RectHandle, pos::String)
     for i in 1:8
@@ -74,34 +85,68 @@ end
 # Mouse actions for rectangular selection creation and modification
 function init_rect_select(ctx::ImageContext)
     c = ctx.canvas
-    #rect = ctx.shape
-    # Define limits of rectangle
+
+    # Build rectangle & points array
     p1 = Signal(XY{UserUnit}(-1.0,-1.0))
     p2 = Signal(XY{UserUnit}(-1.0,-1.0))
-    
     rect = map(p1,p2) do point1,point2
         Rectangle(point1,point2)
     end
-    
     recthandle = map(rect) do r
         RectHandle(r)
     end
+    ctx.points = map(rect) do r
+        [XY(r.x,r.y),XY(r.x+r.w,r.y),XY(r.x+r.w,r.y+r.h),XY(r.x,r.y+r.h),
+         XY(r.x,r.y)]
+    end
+    ctx.shape = rect
     
     # Set of signals used for mouse action logic
     enabled = Signal(true)
-    dragging = Signal(false) #true if mouse was pressed down before it was moved
-    modifying = Signal(false) # true if !isempty(rect) & user clicked inside it
+    modifying = Signal(false)
+    moving = Signal(false)
+    initializing = Signal(false)
     modhandle = Signal(Handle()) # handle that was clicked
-    locmod = Signal(false) # true if modifying rectangle location
-    diff = Signal(XY(0.0,0.0)) # difference between btn.position of sigstart &
-    # top left corner of rectangle - used for moving rect
+    diff = Signal(XY(0.0,0.0)) # difference b/t click & rect pos
 
     dummybtn = MouseButton{UserUnit}()
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
-        println("Starting")
-        push!(dragging, true)
-        # If there is already a rectangle in the environment, begin to modify
-        if !isempty(value(recthandle))
+        hn = nearby_handle(btn.position,value(recthandle))
+        if !isempty(value(rect)) && !isempty(hn)
+            # handle actions
+            println("Modifying")
+            push!(modifying,true)
+            push!(moving,false)
+            push!(initializing,false)
+            push!(modhandle,hn)
+            push!(p1, get_p1(hn, value(recthandle)))
+            push!(p2, get_p2(hn, value(recthandle),btn))
+        elseif (!isempty(value(rect)) && Float64(value(rect).x) <
+                Float64(btn.position.x) < Float64(value(rect).x+value(rect).w)
+                && Float64(value(rect).y) < Float64(btn.position.y) <
+                Float64(value(rect).y+value(rect).h))
+            # motion actions
+            println("Moving")
+            push!(moving,true)
+            push!(modifying,false)
+            push!(initializing,false)
+            push!(diff, XY(btn.position.x-value(rect).x,
+                           btn.position.y-value(rect).y))
+        elseif isempty(value(rect)) || !(Float64(value(rect).x) <
+                Float64(btn.position.x) < Float64(value(rect).x+value(rect).w)
+                && Float64(value(rect).y) < Float64(btn.position.y) <
+                Float64(value(rect).y+value(rect).h))
+            println("Intializing")
+            push!(initializing,true)
+            push!(moving,false)
+            push!(modifying,false)
+            push!(p1,btn.position)
+            push!(p2,btn.position)
+            #push!(rect, Rectangle(20,30,150,230))
+        end
+            #=
+        if !isempty(value(recthandle)) # Modifying actions
+            println("Modifying")
             push!(modifying,true)
             # Identify if click is inside handle
             current = Handle()
@@ -117,7 +162,7 @@ function init_rect_select(ctx::ImageContext)
             if !isempty(current)
                 push!(p1, get_p1(current, value(recthandle)))
                 push!(p2, get_p2(current, value(recthandle), btn))
-                # If the click was inside the rectangle:
+            # If the click was inside the rectangle:
             elseif (Float64(value(rect).x)<Float64(btn.position.x)<Float64(value(rect).x+value(rect).w)) && (Float64(value(rect).y)<Float64(btn.position.y)<Float64(value(rect).y+value(rect).h))
                 push!(locmod,true)
                 # the difference between click and rectangle corner
@@ -135,11 +180,17 @@ function init_rect_select(ctx::ImageContext)
             push!(p1,btn.position) # get values?
             push!(p2,btn.position)
         end
+=#
         nothing
     end
-
-    sigdrag = map(filterwhen(dragging, dummybtn, c.mouse.motion)) do btn
+    
+    # Modifies rectangle by handle
+    sigmod = map(filterwhen(modifying, dummybtn, c.mouse.motion)) do btn
+        if !isempty(value(modhandle))
+            push!(p2, get_p2(value(modhandle), value(recthandle),btn))
+        end
         # If we are modifying an existing rectangle:
+        #=
         if value(modifying)
             if !isempty(value(modhandle))
                 push!(p2, get_p2(value(modhandle), value(recthandle), btn))
@@ -157,25 +208,36 @@ function init_rect_select(ctx::ImageContext)
             push!(p2,btn.position)
             push!(ctx.shape,value(rect))
         end
+=#
         nothing
     end
 
-    sigend = map(filterwhen(dragging, dummybtn, c.mouse.buttonrelease)) do btn
-        push!(dragging,false)
-        # End modification actions
-        if value(modifying)
-            push!(locmod,false)
-            push!(modhandle, Handle())
-            # End build actions
-        elseif !isempty(value(recthandle))
-            push!(p2,btn.position)
-            push!(ctx.shape,value(rect))
-        end
-        nothing
+sigmove = map(filterwhen(moving, dummybtn, c.mouse.motion)) do btn
+    # move
+    push!(p1, XY(btn.position.x-value(diff).x,btn.position.y-value(diff).y))
+    push!(p2, XY((btn.position.x-value(diff).x)+value(rect).w,
+                 (btn.position.y-value(diff).y)+value(rect).h)) # some bug; fix
+    nothing
+end
+
+siginit = map(filterwhen(initializing,dummybtn,c.mouse.motion)) do btn
+    # init
+    push!(p2, btn.position)
+    nothing
+end
+
+sigend = map(filterwhen(enabled, dummybtn, c.mouse.buttonrelease)) do btn
+    if value(initializing)
+        push!(p2,btn.position)
     end
+    push!(moving,false)
+    push!(modifying,false)
+    push!(initializing,false)
+    nothing
+end
 
     push!(ctx.points, [])
 
-    append!(c.preserved, [sigstart, sigdrag, sigend])
+    append!(c.preserved, [sigstart, sigmod, sigmove, siginit, sigend])
     Dict("enabled"=>enabled)
 end

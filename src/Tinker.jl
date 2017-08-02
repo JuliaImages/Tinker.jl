@@ -12,10 +12,9 @@ struct Rectangle <: Shape
     y::Number
     w::Number
     h::Number
-    pts::AbstractArray
 end
 
-Rectangle() = Rectangle(0,0,-1,-1, [])
+Rectangle() = Rectangle(0,0,-1,-1)
 Base.isempty(R::Rectangle) = R.w <= 0 || R.h <= 0
 
 mutable struct ImageContext{T}
@@ -42,12 +41,6 @@ function get_view(image,x_min,y_min,x_max,y_max)
     (xright > max_x) && (xright = max_x)
     (yright > max_y) && (yright = max_y)
     return view(image, yleft:yright, xleft:xright)
-end
-
-# Creates a Rectangle out of x,y,w,h
-function Rectangle(x,y,w,h)
-    pts = [XY(x,y), XY(x+w,y), XY(x+w,y+h), XY(x,y+h), XY(x,y)]
-    return Rectangle(x,y,w,h,pts)
 end
 
 # Creates a Rectangle out of any two points
@@ -278,18 +271,13 @@ function init_gui(image::AbstractArray; name="Tinker")
         return [rect1,rect2]
     end
 
-    # Holds data about rectangular selection
-    rect = Signal(Rectangle())
-    points = map(rect) do r
-        r.pts
-    end
-
     # Placeholder dictionary for context
     dummydict = Dict("pandrag"=>Signal(false),"zoomclick"=>Signal(false),"rectselect"=>Signal(false),"freehand"=>Signal(false),"polysel"=>Signal(false))
+    
     # Context
-    imagectx = ImageContext(image, c, zr, 1, dummydict, rect, Signal([]),
-                            Signal(view(image,1:size(image,2),1:size(image,1))))
-
+    imagectx=ImageContext(image,c,zr,1,dummydict,Signal(Rectangle()),Signal([]),
+                          Signal(view(image,1:size(image,2),1:size(image,1))))
+    
     rectview = map(imagectx.points) do pts
         if ispolygon(pts)
             x_min,x_max = minimum(map(n->n.x,pts)),maximum(map(n->n.x,pts))
@@ -304,7 +292,7 @@ function init_gui(image::AbstractArray; name="Tinker")
     # Mouse actions
     pandrag = init_pan_drag(c, zr) # dragging moves image
     zoomclick = init_zoom_click(imagectx) # clicking zooms image
-    rectselect = init_rect_select(imagectx) # click + drag modifies rect selection
+    rectselect = init_rect_select(imagectx) # click+drag modifies rect selection
     freehand = init_freehand_select(imagectx)
     polysel = init_polygon_select(imagectx)
     push!(pandrag["enabled"],false)
@@ -315,7 +303,7 @@ function init_gui(image::AbstractArray; name="Tinker")
 
     imagectx.mouseactions = Dict("pandrag"=>pandrag["enabled"],"zoomclick"=>zoomclick["enabled"],"rectselect"=>rectselect["enabled"],"freehand"=>freehand["enabled"],"polysel"=>polysel["enabled"])
     
-    append!(c.preserved, [pandrag, zoomclick, rectselect, freehand,polysel])
+    append!(c.preserved, [pandrag,zoomclick,rectselect,freehand,polysel])
 
     # draw
     redraw = draw(c, imagesig, zr, viewdim, imagectx.points) do cnvs, img, r, vd, pt
