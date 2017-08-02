@@ -3,7 +3,7 @@ using Tinker, Base.Test, TestImages, GtkReactive
 # make sure init_gui runs
 Tinker.init_gui(testimage("cameraman.tif"); name="Testing")
 Reactive.run_till_now()
-Tinker.set_mode(Tinker.active_context, 3)
+Tinker.set_mode(Tinker.active_context, 4)
 rselection = value(Tinker.active_context).rectview # current selected region
 
 # Test zoom functions
@@ -36,10 +36,9 @@ Reactive.run_till_now()
 # Test Rectangle constructors
 r1 = Tinker.Rectangle(XY(5.0, 56.8), XY(23.4, 10.0))
 r2 = Tinker.Rectangle(5.0, 10.0, 18.4, 46.8)
-@test (r1.x,r1.y,r1.w,r1.h) == (r2.x,r2.y,r2.w,r2.h)
+@test r1 == r2
 # Test get_handle
-rectangle = Tinker.Rectangle(XY(5.0, 56.8), XY(23.4, 10.0))
-recth = Tinker.RectHandle(rectangle)
+recth = Tinker.RectHandle(r1)
 @test recth.h[3] == Tinker.get_handle(recth, "trc")
 # Test get_p1
 @test XY{UserUnit}(23.4, 56.8) == Tinker.get_p1(recth.h[1], recth)
@@ -55,6 +54,7 @@ struct fake_buttonpress
     position::XY{UserUnit}
 end
 btn1 = fake_buttonpress(XY{UserUnit}(recth.h[1].x+0.1, recth.h[1].y-0.2))
+btn1_1 = fake_buttonpress(XY{UserUnit}(recth.h[1].x+3.2, recth.h[1].y-4.8))
 btn2 = fake_buttonpress(XY{UserUnit}(recth.h[2].x+0.1, recth.h[2].y-0.2))
 btn3 = fake_buttonpress(XY{UserUnit}(recth.h[3].x+0.1, recth.h[3].y-0.2))
 btn4 = fake_buttonpress(XY{UserUnit}(recth.h[4].x+0.1, recth.h[4].y-0.2))
@@ -62,18 +62,8 @@ btn5 = fake_buttonpress(XY{UserUnit}(recth.h[5].x+0.1, recth.h[5].y-0.2))
 btn6 = fake_buttonpress(XY{UserUnit}(recth.h[6].x+0.1, recth.h[6].y-0.2))
 btn7 = fake_buttonpress(XY{UserUnit}(recth.h[7].x+0.1, recth.h[7].y-0.2))
 btn8 = fake_buttonpress(XY{UserUnit}(recth.h[8].x+0.1, recth.h[8].y-0.2))
-btn9 = fake_buttonpress(XY{UserUnit}(40.5, 80.2))
-# Test is_clicked
-d = 8*(IntervalSets.width(test_zr.currentview.x)/IntervalSets.width(test_zr.fullview.x))
-@test Tinker.is_clicked(btn1.position, recth.h[1],d)
-@test Tinker.is_clicked(btn2.position, recth.h[2],d)
-@test Tinker.is_clicked(btn3.position, recth.h[3],d)
-@test Tinker.is_clicked(btn4.position, recth.h[4],d)
-@test Tinker.is_clicked(btn5.position, recth.h[5],d)
-@test Tinker.is_clicked(btn6.position, recth.h[6],d)
-@test Tinker.is_clicked(btn7.position, recth.h[7],d)
-@test Tinker.is_clicked(btn8.position, recth.h[8],d)
-@test !Tinker.is_clicked(btn9.position, recth.h[1],d)
+btn9 = fake_buttonpress(XY{UserUnit}(40.5, 80.2)) # not on a handle
+btn10 = fake_buttonpress(XY{UserUnit}(recth.h[1].x+3.2, recth.h[1].y-6.8)) #""
 # Test get_p2
 @test XY{UserUnit}(btn1.position.x, btn1.position.y) ==
     Tinker.get_p2(recth.h[1], recth, btn1)
@@ -91,6 +81,12 @@ d = 8*(IntervalSets.width(test_zr.currentview.x)/IntervalSets.width(test_zr.full
     Tinker.get_p2(recth.h[7], recth, btn7)
 @test XY{UserUnit}(btn8.position.x, recth.r.y) ==
     Tinker.get_p2(recth.h[8], recth, btn8)
+# Test nearby_handle
+@test Tinker.nearby_handle(btn1.position, recth) == recth.h[1]
+@test Tinker.nearby_handle(btn1_1.position, recth) == recth.h[1]
+@test Tinker.nearby_handle(btn1.position, recth) != recth.h[2]
+@test isempty(Tinker.nearby_handle(btn9.position, recth))
+@test isempty(Tinker.nearby_handle(btn10.position, recth))
 
 # Test get_view
 img = value(Tinker.active_context).image
@@ -108,3 +104,7 @@ img = value(Tinker.active_context).image
 @test !Tinker.ispolygon([XY(1,2),XY(5,6),XY(38,42),XY(2,2)])
 @test Tinker.ispolygon([XY(4,4),XY(5,5),XY(6,7), XY(4,20),XY(9,9),XY(4,4)])
 @test !Tinker.ispolygon([XY(1,2),XY(5,6),XY(38,42),XY(1,2),XY(4,4)])
+
+# Test is_point
+@test Tinker.near_vertex(XY(5.4,2.8),[XY(4,4),XY(5,5),XY(6,7), XY(4,20),XY(9,9),XY(4,4)]) == 1
+@test Tinker.near_vertex(XY(-4,-9),[XY(4,4),XY(5,5),XY(6,7), XY(4,20),XY(9,9),XY(4,4)]) == -1

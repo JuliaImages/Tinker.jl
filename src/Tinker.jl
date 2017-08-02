@@ -12,10 +12,9 @@ struct Rectangle <: Shape
     y::Number
     w::Number
     h::Number
-    pts::AbstractArray
 end
 
-Rectangle() = Rectangle(0,0,-1,-1, [])
+Rectangle() = Rectangle(0,0,-1,-1)
 Base.isempty(R::Rectangle) = R.w <= 0 || R.h <= 0
 
 mutable struct ImageContext{T}
@@ -44,12 +43,6 @@ function get_view(image,x_min,y_min,x_max,y_max)
     return view(image, yleft:yright, xleft:xright)
 end
 
-# Creates a Rectangle out of x,y,w,h
-function Rectangle(x,y,w,h)
-    pts = [XY(x,y), XY(x+w,y), XY(x+w,y+h), XY(x,y+h), XY(x,y)]
-    return Rectangle(x,y,w,h,pts)
-end
-
 # Creates a Rectangle out of any two points
 function Rectangle(p1::XY,p2::XY)
     x, w = min(p1.x, p2.x), abs(p2.x - p1.x)
@@ -66,9 +59,18 @@ function drawrect(ctx, rect, color, width)
     stroke(ctx)
 end;
 
-# Handles modify rectangles (extend to other shapes later)
+#function drawselection(ctx, shape::Freehand, color, width)
+
+# Polygon shape
+struct Polygon <: Shape
+    pts::AbstractArray
+end
+
+Polygon() = Polygon([])
+
+# Handles modify rectangles
 struct Handle
-    r::Rectangle
+    r::Shape
     pos::String # refers to which side or corner of rectangle handle is on
     x::Float64
     y::Float64
@@ -93,6 +95,11 @@ function Handle(r::Rectangle, pos::String)
         y = position_coord[pos][2]
         return Handle(r,pos,xy[1],xy[2])
     end
+end
+
+function Handle(p::Polygon, i::Int)
+    pt = p.pts[i]
+    return Handle(p, "", pt.x,pt.y)
 end
 
 # Draws a handle
@@ -124,6 +131,20 @@ function RectHandle(r::Rectangle)
     h = (Handle(r, "tlc"), Handle(r, "ts"), Handle(r, "trc"), Handle(r, "rs"),
          Handle(r, "brc"), Handle(r, "bs"), Handle(r, "blc"), Handle(r, "ls"))
     return RectHandle(r,h)
+end
+
+struct PolyHandle
+    p::Polygon
+    h::AbstractArray
+end
+
+function PolyHandle(p::Polygon)
+    # makes polyhandle
+    h = [Handle(p,1)]
+    for i in 2:length(p.pts)
+        push!(h,Handle(p,i))
+    end
+    return PolyHandle(p,h)
 end
 
 # Draws RectHandle
@@ -161,50 +182,18 @@ end
 # Moves polygon to a given location
 function move_polygon_to(p::AbstractArray, pt::XY)
     # find diff b/t start & pt; add diff to all in p
-    diff = XY(pt.x-p[1].x,pt.y-p[1].y)
-    map(n -> XY(n.x+diff.x,n.y+diff.y),p)
+    if ispolygon(p)
+        diff = XY(pt.x-p[1].x,pt.y-p[1].y)
+        map(n -> XY(n.x+diff.x,n.y+diff.y),p)
+    else
+        #println("Not a polygon")
+        return p
+    end
 end
 
 # Converts an XY to a Point
 function Point(p::XY)
     Point(p.x,p.y)
-end
-
-# Mouse actions to move any polygon
-function init_move_polygon(ctx::ImageContext)
-    c = ctx.canvas
-    pts = ctx.points
-    enabled = Signal(true)
-    dragging = Signal(false)
-    diff = Signal(XY(NaN,NaN))
-
-    dummybutton = MouseButton{UserUnit}()
-    sigstart = map(filterwhen(enabled,dummybutton,c.mouse.buttonpress)) do btn
-        if ispolygon(value(ctx.points)) # prevents conflict with init_freehand_select
-            if isinside(Point(btn.position), Point.(value(pts)))
-                push!(dragging,true)
-                #push!(ctx.points, move_polygon_to(value(ctx.points),
-                                                  #btn.position))
-                push!(diff, XY(btn.position.x-value(ctx.points)[1].x,
-                               btn.position.y-value(ctx.points)[1].y))
-            end
-        end
-        nothing
-    end
-
-    sigdrag = map(filterwhen(dragging,dummybutton,c.mouse.motion)) do btn
-        push!(ctx.points, move_polygon_to(value(ctx.points),XY(btn.position.x-value(diff).x, btn.position.y-value(diff).y)))
-        nothing
-    end
-
-    sigend = map(filterwhen(dragging,dummybutton,c.mouse.buttonrelease)) do btn
-        push!(dragging,false)
-        push!(diff, XY(NaN,NaN))
-        nothing
-    end
-    
-    append!(c.preserved, [sigstart, sigdrag, sigend])
-    Dict("enabled"=>enabled)
 end
 
 include("zoom_interaction.jl")
@@ -247,16 +236,26 @@ function init_gui(image::AbstractArray; name="Tinker")
         return [rect1,rect2]
     end
 
-    # Holds data about rectangular selection
-    rect = Signal(Rectangle())
-    points = map(rect) do r
-        r.pts
-    end
-
+    # Placeholder dictionary for context
+    dummydict = Dict("pandrag"=>Signal(false),"zoomclick"=>Signal(false),"rectselect"=>Signal(false),"freehand"=>Signal(false),"polysel"=>Signal(false))
+    
     # Context
-    imagectx = ImageContext(image, c, zr, 1, Dict("dummy"=>Signal(false)),
-                            rect, points, Signal(view(image,1:size(image,2),
-                                                      1:size(image,1))))
+    imagectx=ImageContext(image,c,zr,1,dummydict,Signal(Rectangle()),Signal([]),
+                          Signal(view(image,1:size(image,2),1:size(image,1))))
+    
+    # Mouse actions
+    pandrag = init_pan_drag(c, zr) # dragging moves image
+    zoomclick = init_zoom_click(imagectx) # clicking zooms image
+    rectselect = init_rect_select(imagectx) # click+drag modifies rect selection
+    freehand = init_freehand_select(imagectx)
+    polysel = init_polygon_select(imagectx)
+    push!(pandrag["enabled"],false)
+    push!(zoomclick["enabled"],false)
+    push!(rectselect["enabled"],false)
+    push!(freehand["enabled"],false)
+    push!(polysel["enabled"],false)
+
+    imagectx.mouseactions = Dict("pandrag"=>pandrag["enabled"],"zoomclick"=>zoomclick["enabled"],"rectselect"=>rectselect["enabled"],"freehand"=>freehand["enabled"],"polysel"=>polysel["enabled"])
 
     rectview = map(imagectx.points) do pts
         if ispolygon(pts)
@@ -268,25 +267,8 @@ function init_gui(image::AbstractArray; name="Tinker")
         end
     end
     imagectx.rectview = rectview
-        
     
-    # Mouse actions
-    pandrag = init_pan_drag(c, zr) # dragging moves image
-    zoomclick = init_zoom_click(imagectx) # clicking zooms image
-    rectselect = init_rect_select(imagectx) # click + drag modifies rect selection
-    freehand = init_freehand_select(imagectx)
-    movepol = init_move_polygon(imagectx)
-    polysel = init_polygon_select(imagectx)
-    push!(pandrag["enabled"],false)
-    push!(zoomclick["enabled"],false)
-    push!(rectselect["enabled"],false)
-    push!(freehand["enabled"],false)
-    push!(movepol["enabled"],false)
-    push!(polysel["enabled"],false)
-
-    imagectx.mouseactions = Dict("pandrag"=>pandrag["enabled"],"zoomclick"=>zoomclick["enabled"],"rectselect"=>rectselect["enabled"],"freehand"=>freehand["enabled"],"movepol"=>movepol["enabled"],"polysel"=>polysel["enabled"])
-    
-    append!(c.preserved, [pandrag, zoomclick, rectselect, freehand, movepol])
+    append!(c.preserved, [pandrag,zoomclick,rectselect,freehand,polysel])
 
     # draw
     redraw = draw(c, imagesig, zr, viewdim, imagectx.points) do cnvs, img, r, vd, pt
@@ -324,7 +306,6 @@ function set_mode(ctx::ImageContext, mode::Int)
     push!(ctx.mouseactions["zoomclick"], false)
     push!(ctx.mouseactions["rectselect"], false)
     push!(ctx.mouseactions["freehand"], false)
-    push!(ctx.mouseactions["movepol"],false)
     push!(ctx.mouseactions["polysel"],false)
     if mode == 1 # turn on zoom controls
         println("Zoom mode")
@@ -336,12 +317,9 @@ function set_mode(ctx::ImageContext, mode::Int)
     elseif mode == 3 # freehand select
         println("Freehand mode")
         push!(ctx.mouseactions["freehand"],true)
-        println("Move mode")
-        push!(ctx.mouseactions["movepol"],true)
     elseif mode == 4 # polygon select
         println("Polygon mode")
         push!(ctx.mouseactions["polysel"],true)
-        push!(ctx.mouseactions["movepol"],true)
     end
 end
 
