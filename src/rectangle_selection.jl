@@ -85,12 +85,11 @@ end
 # Mouse actions for rectangular selection creation and modification
 function init_rect_select(ctx::ImageContext)
     c = ctx.canvas
-
+    
     # Build rectangle & points array
-    p1 = Signal(XY{UserUnit}(-1.0,-1.0))
-    p2 = Signal(XY{UserUnit}(-1.0,-1.0))
-    rect = map(p1,p2) do point1,point2
-        Rectangle(point1,point2)
+    pts = Signal((XY{UserUnit}(-1.0,-1.0),XY{UserUnit}(-1.0,-1.0)))
+    rect = map(pts) do p
+        Rectangle(p[1],p[2])
     end
     recthandle = map(rect) do r
         RectHandle(r)
@@ -109,132 +108,74 @@ function init_rect_select(ctx::ImageContext)
     modhandle = Signal(Handle()) # handle that was clicked
     diff = Signal(XY(0.0,0.0)) # difference b/t click & rect pos
 
+    # Mouse action signals
     dummybtn = MouseButton{UserUnit}()
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
         hn = nearby_handle(btn.position,value(recthandle))
         if !isempty(value(rect)) && !isempty(hn)
-            # handle actions
-            println("Modifying")
+            # Handle actions
             push!(modifying,true)
             push!(moving,false)
             push!(initializing,false)
             push!(modhandle,hn)
-            push!(p1, get_p1(hn, value(recthandle)))
-            push!(p2, get_p2(hn, value(recthandle),btn))
+            push!(pts, (get_p1(hn, value(recthandle)),
+                        get_p2(hn, value(recthandle),btn)))
         elseif (!isempty(value(rect)) && Float64(value(rect).x) <
                 Float64(btn.position.x) < Float64(value(rect).x+value(rect).w)
                 && Float64(value(rect).y) < Float64(btn.position.y) <
                 Float64(value(rect).y+value(rect).h))
-            # motion actions
-            println("Moving")
+            # Motion actions
             push!(moving,true)
             push!(modifying,false)
             push!(initializing,false)
             push!(diff, XY(btn.position.x-value(rect).x,
                            btn.position.y-value(rect).y))
         elseif isempty(value(rect)) || !(Float64(value(rect).x) <
-                Float64(btn.position.x) < Float64(value(rect).x+value(rect).w)
-                && Float64(value(rect).y) < Float64(btn.position.y) <
-                Float64(value(rect).y+value(rect).h))
-            println("Intializing")
+               Float64(btn.position.x) < Float64(value(rect).x+value(rect).w)
+               && Float64(value(rect).y) < Float64(btn.position.y) <
+                                         Float64(value(rect).y+value(rect).h))
+            # Build actions
             push!(initializing,true)
             push!(moving,false)
             push!(modifying,false)
-            push!(p1,btn.position)
-            push!(p2,btn.position)
-            #push!(rect, Rectangle(20,30,150,230))
+            push!(pts,(btn.position,btn.position))
         end
-            #=
-        if !isempty(value(recthandle)) # Modifying actions
-            println("Modifying")
-            push!(modifying,true)
-            # Identify if click is inside handle
-            current = Handle()
-            d = 8*(IntervalSets.width(value(ctx.zr).currentview.x)/IntervalSets.width(value(ctx.zr).fullview.x)) # physical dimension of handle
-            for n in 1:length(value(recthandle).h)
-                if is_clicked(btn.position, value(recthandle).h[n], d)
-                    current = value(recthandle).h[n]
-                    push!(modhandle, current)
-                    break
-                end
-            end
-            # If the click was on a handle:
-            if !isempty(current)
-                push!(p1, get_p1(current, value(recthandle)))
-                push!(p2, get_p2(current, value(recthandle), btn))
-            # If the click was inside the rectangle:
-            elseif (Float64(value(rect).x)<Float64(btn.position.x)<Float64(value(rect).x+value(rect).w)) && (Float64(value(rect).y)<Float64(btn.position.y)<Float64(value(rect).y+value(rect).h))
-                push!(locmod,true)
-                # the difference between click and rectangle corner
-                push!(diff, XY(Float64(btn.position.x) - value(rect).x,
-                               Float64(btn.position.y) - value(rect).y))            else
-                # Destroy rectangle and allow for a new one to be created
-                push!(modifying,false)
-                push!(ctx.shape, Rectangle())
-                push!(p1, btn.position)
-                push!(p2, btn.position)
-            end
-            # If there isn't a rectangle in the environment, begin to build one
-        else
-            push!(modifying,false)
-            push!(p1,btn.position) # get values?
-            push!(p2,btn.position)
-        end
-=#
         nothing
     end
     
     # Modifies rectangle by handle
     sigmod = map(filterwhen(modifying, dummybtn, c.mouse.motion)) do btn
         if !isempty(value(modhandle))
-            push!(p2, get_p2(value(modhandle), value(recthandle),btn))
+            push!(pts, (value(pts)[1],
+                        get_p2(value(modhandle),value(recthandle),btn)))
         end
-        # If we are modifying an existing rectangle:
-        #=
-        if value(modifying)
-            if !isempty(value(modhandle))
-                push!(p2, get_p2(value(modhandle), value(recthandle), btn))
-                push!(ctx.shape, value(rect))
-            elseif value(locmod) # if modifying the location
-                # move rectangle
-                push!(p1, XY(btn.position.x-value(diff).x,
-                             btn.position.y-value(diff).y))
-                push!(p2, XY((btn.position.x-value(diff).x)+value(rect).w,
-                             (btn.position.y-value(diff).y)+value(rect).h))
-                push!(ctx.shape, value(rect))
-            end
-            # If we are building a new rectangle:
-        else
-            push!(p2,btn.position)
-            push!(ctx.shape,value(rect))
-        end
-=#
         nothing
     end
 
-sigmove = map(filterwhen(moving, dummybtn, c.mouse.motion)) do btn
-    # move
-    push!(p1, XY(btn.position.x-value(diff).x,btn.position.y-value(diff).y))
-    push!(p2, XY((btn.position.x-value(diff).x)+value(rect).w,
-                 (btn.position.y-value(diff).y)+value(rect).h)) # some bug; fix
-    nothing
-end
-
-siginit = map(filterwhen(initializing,dummybtn,c.mouse.motion)) do btn
-    # init
-    push!(p2, btn.position)
-    nothing
-end
-
-sigend = map(filterwhen(enabled, dummybtn, c.mouse.buttonrelease)) do btn
-    if value(initializing)
-        push!(p2,btn.position)
+    # Moves rectangle
+    sigmove = map(filterwhen(moving, dummybtn, c.mouse.motion)) do btn
+        # move
+        push!(pts,(XY(btn.position.x-value(diff).x,
+                      btn.position.y-value(diff).y),
+                   XY((btn.position.x-value(diff).x)+value(rect).w,
+                      (btn.position.y-value(diff).y)+value(rect).h)))
+        nothing
     end
-    push!(moving,false)
-    push!(modifying,false)
-    push!(initializing,false)
-    nothing
-end
+
+    # Builds rectangle
+    siginit = map(filterwhen(initializing,dummybtn,c.mouse.motion)) do btn
+        # init
+        push!(pts, (value(pts)[1],btn.position))
+        nothing
+    end
+
+    # Reset signals
+    sigend = map(filterwhen(enabled, dummybtn, c.mouse.buttonrelease)) do btn
+        push!(moving,false)
+        push!(modifying,false)
+        push!(initializing,false)
+        nothing
+    end
 
     push!(ctx.points, [])
 
