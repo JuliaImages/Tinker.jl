@@ -82,11 +82,11 @@ btn10 = fake_buttonpress(XY{UserUnit}(recth.h[1].x+3.2, recth.h[1].y-6.8)) #""
 @test XY{UserUnit}(btn8.position.x, recth.r.y) ==
     Tinker.get_p2(recth.h[8], recth, btn8)
 # Test nearby_handle
-@test Tinker.nearby_handle(btn1.position, recth) == recth.h[1]
-@test Tinker.nearby_handle(btn1_1.position, recth) == recth.h[1]
-@test Tinker.nearby_handle(btn1.position, recth) != recth.h[2]
-@test isempty(Tinker.nearby_handle(btn9.position, recth))
-@test isempty(Tinker.nearby_handle(btn10.position, recth))
+@test Tinker.nearby_handle(btn1.position, recth, 5.0) == recth.h[1]
+@test Tinker.nearby_handle(btn1_1.position, recth, 5.0) == recth.h[1]
+@test Tinker.nearby_handle(btn1.position, recth, 5.0) != recth.h[2]
+@test isempty(Tinker.nearby_handle(btn9.position, recth, 5.0))
+@test isempty(Tinker.nearby_handle(btn10.position, recth, 5.0))
 
 # Test get_view
 img = value(Tinker.active_context).image
@@ -106,5 +106,5 @@ img = value(Tinker.active_context).image
 @test !Tinker.ispolygon([XY(1,2),XY(5,6),XY(38,42),XY(1,2),XY(4,4)])
 
 # Test is_point
-@test Tinker.near_vertex(XY(5.4,2.8),[XY(4,4),XY(5,5),XY(6,7), XY(4,20),XY(9,9),XY(4,4)]) == 1
-@test Tinker.near_vertex(XY(-4,-9),[XY(4,4),XY(5,5),XY(6,7), XY(4,20),XY(9,9),XY(4,4)]) == -1
+@test Tinker.near_vertex(XY(5.4,2.8),[XY(4,4),XY(5,5),XY(6,7), XY(4,20),XY(9,9),XY(4,4)],5.0) == 1
+@test Tinker.near_vertex(XY(-4,-9),[XY(4,4),XY(5,5),XY(6,7), XY(4,20),XY(9,9),XY(4,4)],5.0) == -1

@@ -1,3 +1,5 @@
+# Functions for selecting freehand shapes and polygons.
+
 function init_freehand_select(ctx::ImageContext)
     c = ctx.canvas
     enabled = Signal(true)
@@ -6,7 +8,7 @@ function init_freehand_select(ctx::ImageContext)
     diff = Signal(XY(NaN,NaN))
 
     dummybtn = MouseButton{UserUnit}()
-    
+
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
         if !ispolygon(value(ctx.points)) || !isinside(Point(btn.position), Point.(value(ctx.points)))
             push!(drawing, true)
@@ -48,10 +50,10 @@ function init_freehand_select(ctx::ImageContext)
     Dict("enabled"=>enabled)
 end
 
-function near_vertex(pt::XY, p)
+function near_vertex(pt::XY, p, t::Float64)
     # returns index of nearby point
     for i in 1:length(p)
-        if (p[i].x-5 <= pt.x <= p[i].x+5) && (p[i].y-5 <= pt.y <= p[i].y+5)
+        if (p[i].x-t <= pt.x <= p[i].x+t) && (p[i].y-t <= pt.y <= p[i].y+t)
             return i
         end
     end
@@ -61,6 +63,7 @@ end
 function init_polygon_select(ctx::ImageContext)
     enabled = Signal(false)
     c = ctx.canvas
+    tol = get_tolerance(ctx)
 
     dummybtn = MouseButton{UserUnit}()
     building = Signal(false)
@@ -73,12 +76,12 @@ function init_polygon_select(ctx::ImageContext)
 
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
         pts = value(ctx.points)
-        if (ispolygon(pts) && near_vertex(btn.position, pts) != -1)
+        if (ispolygon(pts) && near_vertex(btn.position,pts,tol) != -1)
             # modification actions
             push!(modifying,true)
             push!(building,false)
             push!(moving,false)
-            push!(modhandle,near_vertex(btn.position,pts))
+            push!(modhandle,near_vertex(btn.position,pts,tol))
         elseif (ispolygon(pts) && isinside(Point(btn.position),Point.(pts)))
             # moving actions
             push!(moving,true)
@@ -95,8 +98,8 @@ function init_polygon_select(ctx::ImageContext)
             push!(ctx.points, [btn.position])
             push!(num_pts,1)
         elseif !ispolygon(pts) # adds to polygon
-            if (length(pts) > 3 && pts[1].x - 5 <= btn.position.x <=
-                pts[1].x + 5 && pts[1].y - 5 <= btn.position.y <= pts[1].y + 5)
+            if (length(pts) > 3 && pts[1].x-tol <= btn.position.x <=
+                pts[1].x+tol && pts[1].y-tol <= btn.position.y <= pts[1].y+tol)
                 # finishes polygon if click near start
                 pts[end] = pts[1]
                 push!(ctx.points,pts)
@@ -120,7 +123,8 @@ function init_polygon_select(ctx::ImageContext)
 
     # Moves polygon
     sigmove = map(filterwhen(moving,dummybtn,c.mouse.motion)) do btn
-        push!(ctx.points, move_polygon_to(value(ctx.points),XY(btn.position.x-value(diff).x,btn.position.y-value(diff).y)))
+        push!(ctx.points, move_polygon_to(value(ctx.points),XY(btn.position.x-
+              value(diff).x,btn.position.y-value(diff).y)))
         nothing
     end
 
@@ -148,9 +152,9 @@ function init_polygon_select(ctx::ImageContext)
         push!(diff, XY(NaN,NaN))
         push!(modhandle, -1)
     end
-    
+
     push!(ctx.points, Vector{XY{Float64}}[])
-    
+
     append!(c.preserved, [sigstart, sigbuild, sigmove, sigmodify, sigend])
     Dict("enabled"=>enabled)
 end

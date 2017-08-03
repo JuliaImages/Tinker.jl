@@ -43,6 +43,17 @@ function get_view(image,x_min,y_min,x_max,y_max)
     return view(image, yleft:yright, xleft:xright)
 end
 
+# Calculates tolerance based on zoom level
+function get_tolerance(zr::ZoomRegion)
+  tol = 5*(IntervalSets.width(zr.currentview.x)/IntervalSets.width(zr.fullview.x))
+  return tol
+end
+
+function get_tolerance(ctx::ImageContext)
+  zr = value(ctx.zr)
+  get_tolerance(zr)
+end
+
 # Creates a Rectangle out of any two points
 function Rectangle(p1::XY,p2::XY)
     x, w = min(p1.x, p2.x), abs(p2.x - p1.x)
@@ -159,11 +170,11 @@ end
 function drawline(ctx, l, color, width)
     isempty(l) && return
     p = first(l)
-    move_to(ctx, p.x, p.y) 
+    move_to(ctx, p.x, p.y)
     set_source(ctx, color)
     set_line_width(ctx, width)
     for i = 2:length(l)
-        p = l[i] 
+        p = l[i]
         line_to(ctx, p.x, p.y)
     end
     stroke(ctx)
@@ -215,7 +226,7 @@ function init_gui(image::AbstractArray; name="Tinker")
         cv = r.currentview
         view(image, UnitRange{Int}(cv.y), UnitRange{Int}(cv.x))
     end;
-    
+
     # create a view diagram
     viewdim = map(zr) do r
         fvx, fvy = r.fullview.x, r.fullview.y # x, y range of full view
@@ -238,11 +249,11 @@ function init_gui(image::AbstractArray; name="Tinker")
 
     # Placeholder dictionary for context
     dummydict = Dict("pandrag"=>Signal(false),"zoomclick"=>Signal(false),"rectselect"=>Signal(false),"freehand"=>Signal(false),"polysel"=>Signal(false))
-    
+
     # Context
     imagectx=ImageContext(image,c,zr,1,dummydict,Signal(Rectangle()),Signal([]),
                           Signal(view(image,1:size(image,2),1:size(image,1))))
-    
+
     # Mouse actions
     pandrag = init_pan_drag(c, zr) # dragging moves image
     zoomclick = init_zoom_click(imagectx) # clicking zooms image
@@ -267,7 +278,7 @@ function init_gui(image::AbstractArray; name="Tinker")
         end
     end
     imagectx.rectview = rectview
-    
+
     append!(c.preserved, [pandrag,zoomclick,rectselect,freehand,polysel])
 
     # draw
@@ -285,7 +296,7 @@ function init_gui(image::AbstractArray; name="Tinker")
     end
 
     showall(win);
-    
+
     push!(img_ctxs, push!(value(img_ctxs), imagectx))
     return imagectx
 end;
