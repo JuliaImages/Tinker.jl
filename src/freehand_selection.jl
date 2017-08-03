@@ -6,13 +6,14 @@ function init_freehand_select(ctx::ImageContext)
     drawing = Signal(false)
     moving = Signal(false)
     diff = Signal(XY(NaN,NaN))
+    polygon = map(p->Polygon(p),ctx.points) # this -> ctx.shape
 
     dummybtn = MouseButton{UserUnit}()
 
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
         if !ispolygon(value(ctx.points)) || !isinside(Point(btn.position), Point.(value(ctx.points)))
             push!(drawing, true)
-            push!(ctx.shape, Rectangle()) # some identifier of type of selection
+            #push!(ctx.shape, Rectangle()) # some identifier of type of selection
             push!(ctx.points, Vector{XY{Float64}}[])
             push!(ctx.points, [btn.position])
         elseif ispolygon(value(ctx.points)) && isinside(Point(btn.position), Point.(value(ctx.points)))
@@ -73,6 +74,13 @@ function init_polygon_select(ctx::ImageContext)
     modhandle = Signal(-1)
     diff = Signal(XY(NaN,NaN))
     mouse_motion = map(&,enabled,building)
+    polyhandle = map(ctx.points) do pts # this -> ctx.shape
+      if !isempty(pts)
+        PolyHandle(pts)
+      else
+        PolyHandle()
+      end
+    end
 
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
         pts = value(ctx.points)
@@ -104,6 +112,7 @@ function init_polygon_select(ctx::ImageContext)
                 pts[end] = pts[1]
                 push!(ctx.points,pts)
                 push!(num_pts, length(pts))
+                ctx.shape = polyhandle
             else # add to polygon
                 value(ctx.points)[end] = btn.position
                 push!(num_pts, length(pts))

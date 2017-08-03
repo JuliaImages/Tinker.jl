@@ -2,9 +2,8 @@ using Tinker, Base.Test, TestImages, GtkReactive
 
 # make sure init_gui runs
 Tinker.init_gui(testimage("cameraman.tif"); name="Testing")
-Reactive.run_till_now()
-Tinker.set_mode_all(Tinker.rectangle)
-Tinker.set_mode(Tinker.polygon)
+Tinker.set_mode_all(Tinker.rect)
+Tinker.set_mode(Tinker.rect)
 #rselection = value(Tinker.active_context).rectview # current selected region
 
 # Test zoom functions

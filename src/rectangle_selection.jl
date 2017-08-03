@@ -84,12 +84,11 @@ function init_rect_select(ctx::ImageContext)
     # Build rectangle & points array
     pts = Signal((XY{UserUnit}(-1.0,-1.0),XY{UserUnit}(-1.0,-1.0)))
     rect = map(p->Rectangle(p[1],p[2]),pts)
-    recthandle = map(r->RectHandle(r),rect)
+    recthandle = map(r->RectHandle(r),rect) # this -> ctx.shape
     ctx.points = map(rect) do r
         [XY(r.x,r.y),XY(r.x+r.w,r.y),XY(r.x+r.w,r.y+r.h),XY(r.x,r.y+r.h),
          XY(r.x,r.y)]
     end
-    ctx.shape = rect
 
     # Set of signals used for mouse action logic
     enabled = Signal(true)

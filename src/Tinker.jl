@@ -45,7 +45,7 @@ end
 
 # Calculates tolerance based on zoom level
 function get_tolerance(zr::ZoomRegion)
-  tol = 5*(IntervalSets.width(zr.currentview.x)/IntervalSets.width(zr.fullview.x))
+  tol = 4*(IntervalSets.width(zr.currentview.x)/IntervalSets.width(zr.fullview.x))
   return tol
 end
 
@@ -78,9 +78,10 @@ struct Polygon <: Shape
 end
 
 Polygon() = Polygon([])
+Base.isempty(P::Polygon) = isempty(P.pts)
 
 # Handles modify rectangles
-struct Handle
+struct Handle <: Shape
     r::Shape
     pos::String # refers to which side or corner of rectangle handle is on
     x::Float64
@@ -115,19 +116,19 @@ end
 
 # Draws a handle
 function drawhandle(ctx, handle::Handle, d)
-    if !isempty(handle)
-        rectangle(ctx, handle.x-(d/2), handle.y-(d/2),
-                  d, d)
-        set_source(ctx,colorant"white")
-        fill_preserve(ctx)
-        set_source(ctx,colorant"black")
-        set_line_width(ctx,1.0)
-        stroke_preserve(ctx)
-    end
+  if !isempty(handle)
+    rectangle(ctx, handle.x-(d), handle.y-(d),
+              d*2, d*2)
+    set_source(ctx,colorant"white")
+    fill_preserve(ctx)
+    set_source(ctx,colorant"black")
+    set_line_width(ctx,1.0)
+    stroke_preserve(ctx)
+  end
 end; # like drawrect, but makes x,y refer to center of handle
 
 # A rectangle with handles at all 8 positions
-struct RectHandle
+struct RectHandle <: Shape
     r::Rectangle
     h::NTuple{8,Handle}
 end
@@ -144,10 +145,12 @@ function RectHandle(r::Rectangle)
     return RectHandle(r,h)
 end
 
-struct PolyHandle
+struct PolyHandle <: Shape
     p::Polygon
     h::AbstractArray
 end
+
+PolyHandle() = PolyHandle(Polygon([]),[])
 
 function PolyHandle(p::Polygon)
     # makes polyhandle
@@ -158,12 +161,23 @@ function PolyHandle(p::Polygon)
     return PolyHandle(p,h)
 end
 
+function PolyHandle(p::AbstractArray)
+  return PolyHandle(Polygon(p))
+end
+
 # Draws RectHandle
 function drawrecthandle(ctx, rh::RectHandle, d, color1, width)
     drawrect(ctx, rh.r, color1, width)
     for n in 1:length(rh.h)
         drawhandle(ctx, rh.h[n], d)
     end
+end
+
+function drawpolyhandle(ctx, ph::PolyHandle, d, color, width)
+  drawline(ctx, ph.p.pts, color, width)
+  for i in 1:length(ph.h)
+    drawhandle(ctx, ph.h[i], d)
+  end
 end
 
 # Connects an array of points
@@ -179,6 +193,22 @@ function drawline(ctx, l, color, width)
     end
     stroke(ctx)
 end
+
+function drawshape(ctx, sh::RectHandle, d, color, width)
+  # draw RectHandle
+  drawrecthandle(ctx, sh, d, color, width)
+end
+
+function drawshape(ctx, sh::Polygon, d, color, width)
+  # draw Polygon
+  drawline(ctx, sh.pts, color, width)
+end
+
+function drawshape(ctx, sh::PolyHandle, d, color, width)
+  # draw PolyHandle
+  drawpolyhandle(ctx, sh, d, color, width)
+end
+
 
 # Checks if an array of points qualifies as a polygon
 function ispolygon(p::AbstractVector)
@@ -255,11 +285,12 @@ function init_gui(image::AbstractArray; name="Tinker")
                           Signal(view(image,1:size(image,2),1:size(image,1))))
 
     # Mouse actions
-    pandrag = init_pan_drag(c, zr) # dragging moves image
-    zoomclick = init_zoom_click(imagectx) # clicking zooms image
-    rectselect = init_rect_select(imagectx) # click+drag modifies rect selection
+    pandrag = init_pan_drag(c, zr)
+    zoomclick = init_zoom_click(imagectx)
+    rectselect = init_rect_select(imagectx)
     freehand = init_freehand_select(imagectx)
     polysel = init_polygon_select(imagectx)
+
     push!(pandrag["enabled"],false)
     push!(zoomclick["enabled"],false)
     push!(rectselect["enabled"],false)
@@ -268,7 +299,7 @@ function init_gui(image::AbstractArray; name="Tinker")
 
     imagectx.mouseactions = Dict("pandrag"=>pandrag["enabled"],"zoomclick"=>zoomclick["enabled"],"rectselect"=>rectselect["enabled"],"freehand"=>freehand["enabled"],"polysel"=>polysel["enabled"])
 
-    rectview = map(imagectx.points) do pts
+    imagectx.rectview = map(imagectx.points) do pts
         if ispolygon(pts)
             x_min,x_max = minimum(map(n->n.x,pts)),maximum(map(n->n.x,pts))
             y_min,y_max =minimum(map(n->n.y,pts)),maximum(map(n->n.y,pts))
@@ -277,12 +308,11 @@ function init_gui(image::AbstractArray; name="Tinker")
             view(image,1:size(image,2),1:size(image,1))
         end
     end
-    imagectx.rectview = rectview
 
     append!(c.preserved, [pandrag,zoomclick,rectselect,freehand,polysel])
 
     # draw
-    redraw = draw(c, imagesig, zr, viewdim, imagectx.points) do cnvs, img, r, vd, pt
+    redraw = draw(c, imagesig, zr, viewdim, imagectx.points, imagectx.shape) do cnvs,img,r,vd,pts,sh
         copy!(cnvs, img) # show image on canvas at current zoom level
         set_coordinates(cnvs, r) # set canvas coordinates to zr
         ctx = getgc(cnvs)
@@ -291,8 +321,15 @@ function init_gui(image::AbstractArray; name="Tinker")
             drawrect(ctx, vd[1], colorant"blue", 2.0)
             drawrect(ctx, vd[2], colorant"blue", 2.0)
         end
-        #d = 8*(IntervalSets.width(r.currentview.x)/IntervalSets.width(r.fullview.x)) # physical dimension of handle
-        drawline(ctx, pt, colorant"yellow", 1.0)
+        if ispolygon(value(imagectx.points))
+          # draw shape
+          drawline(ctx, pts, colorant"yellow", 1.0)
+          #drawshape(ctx, sh, get_tolerance(imagectx), colorant"yellow", 1.0)
+          @show typeof(sh)
+        else
+          # draw working line
+          drawline(ctx, pts, colorant"red", 1.0)
+        end
     end
 
     showall(win);
@@ -312,7 +349,7 @@ active_context = map(img_ctxs) do ic # signal dependent on img_ctxs
     end
 end
 
-@enum Mode zoom rectangle freehand polygon
+@enum Mode zm rect freehand poly
 
 function set_mode(ctx::ImageContext, mode::Mode)
     push!(ctx.mouseactions["pandrag"], false)
@@ -320,17 +357,17 @@ function set_mode(ctx::ImageContext, mode::Mode)
     push!(ctx.mouseactions["rectselect"], false)
     push!(ctx.mouseactions["freehand"], false)
     push!(ctx.mouseactions["polysel"],false)
-    if mode == zoom # turn on zoom controls
+    if mode == zm # turn on zoom controls
         println("Zoom mode")
         push!(ctx.mouseactions["pandrag"], true)
         push!(ctx.mouseactions["zoomclick"], true)
-    elseif mode == rectangle # turn on rectangular region selection controls
+    elseif mode == rect # turn on rectangular region selection controls
         println("Rectangle mode")
         push!(ctx.mouseactions["rectselect"], true)
     elseif mode == freehand # freehand select
         println("Freehand mode")
         push!(ctx.mouseactions["freehand"],true)
-    elseif mode == polygon # polygon select
+    elseif mode == poly # polygon select
         println("Polygon mode")
         push!(ctx.mouseactions["polysel"],true)
     end
