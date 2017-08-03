@@ -312,28 +312,42 @@ active_context = map(img_ctxs) do ic # signal dependent on img_ctxs
     end
 end
 
-function set_mode(ctx::ImageContext, mode::Int)
+@enum Mode zoom rectangle freehand polygon
+
+function set_mode(ctx::ImageContext, mode::Mode)
     push!(ctx.mouseactions["pandrag"], false)
     push!(ctx.mouseactions["zoomclick"], false)
     push!(ctx.mouseactions["rectselect"], false)
     push!(ctx.mouseactions["freehand"], false)
     push!(ctx.mouseactions["polysel"],false)
-    if mode == 1 # turn on zoom controls
+    if mode == zoom # turn on zoom controls
         println("Zoom mode")
         push!(ctx.mouseactions["pandrag"], true)
         push!(ctx.mouseactions["zoomclick"], true)
-    elseif mode == 2 # turn on rectangular region selection controls
+    elseif mode == rectangle # turn on rectangular region selection controls
         println("Rectangle mode")
         push!(ctx.mouseactions["rectselect"], true)
-    elseif mode == 3 # freehand select
+    elseif mode == freehand # freehand select
         println("Freehand mode")
         push!(ctx.mouseactions["freehand"],true)
-    elseif mode == 4 # polygon select
+    elseif mode == polygon # polygon select
         println("Polygon mode")
         push!(ctx.mouseactions["polysel"],true)
     end
 end
 
 set_mode(sig::Signal, mode) = set_mode(value(sig), mode)
+
+# Sets active context
+function set_mode(mode::Mode)
+  set_mode(active_context, mode)
+end
+
+# Sets all contexts
+function set_mode_all(mode::Mode)
+  for c in value(img_ctxs)
+    set_mode(c, mode)
+  end
+end
 
 end # module
