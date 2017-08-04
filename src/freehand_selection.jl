@@ -11,6 +11,7 @@ function init_freehand_select(ctx::ImageContext)
     dummybtn = MouseButton{UserUnit}()
 
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
+      ctx.shape = polygon
         if !ispolygon(value(ctx.points)) || !isinside(Point(btn.position), Point.(value(ctx.points)))
             push!(drawing, true)
             #push!(ctx.shape, Rectangle()) # some identifier of type of selection
@@ -83,6 +84,7 @@ function init_polygon_select(ctx::ImageContext)
     end
 
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
+      ctx.shape = polyhandle
         pts = value(ctx.points)
         if (ispolygon(pts) && near_vertex(btn.position,pts,tol) != -1)
             # modification actions

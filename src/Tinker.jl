@@ -1,6 +1,7 @@
 module Tinker
 
-using Gtk.ShortNames, GtkReactive, Graphics, Colors, Images, IntervalSets, Luxor.isinside, Luxor.Point
+using Gtk.ShortNames, GtkReactive, Graphics, Colors, Images, IntervalSets
+using Luxor.isinside, Luxor.Point
 
 img_ctxs = Signal([])
 
@@ -145,6 +146,7 @@ function RectHandle(r::Rectangle)
     return RectHandle(r,h)
 end
 
+# A polygon with handles at every vertex
 struct PolyHandle <: Shape
     p::Polygon
     h::AbstractArray
@@ -173,6 +175,7 @@ function drawrecthandle(ctx, rh::RectHandle, d, color1, width)
     end
 end
 
+# draws PolyHandle
 function drawpolyhandle(ctx, ph::PolyHandle, d, color, width)
   drawline(ctx, ph.p.pts, color, width)
   for i in 1:length(ph.h)
@@ -194,6 +197,7 @@ function drawline(ctx, l, color, width)
     stroke(ctx)
 end
 
+# Set of versatile methods to draw many shapes with the same function
 function drawshape(ctx, sh::RectHandle, d, color, width)
   # draw RectHandle
   drawrecthandle(ctx, sh, d, color, width)
@@ -208,7 +212,6 @@ function drawshape(ctx, sh::PolyHandle, d, color, width)
   # draw PolyHandle
   drawpolyhandle(ctx, sh, d, color, width)
 end
-
 
 # Checks if an array of points qualifies as a polygon
 function ispolygon(p::AbstractVector)
@@ -242,7 +245,7 @@ include("rectangle_selection.jl")
 include("freehand_selection.jl")
 
 ## Sets up an image in a separate window with the ability to adjust view
-function init_gui(image::AbstractArray; name="Tinker")
+function init_image(image::AbstractArray; name="Tinker")
     # set up window
     win = Window(name, size(image,2), size(image,1));
     c = canvas(UserUnit);
@@ -325,7 +328,7 @@ function init_gui(image::AbstractArray; name="Tinker")
           # draw shape
           drawline(ctx, pts, colorant"yellow", 1.0)
           #drawshape(ctx, sh, get_tolerance(imagectx), colorant"yellow", 1.0)
-          @show typeof(sh)
+          #@show typeof(sh)
         else
           # draw working line
           drawline(ctx, pts, colorant"red", 1.0)
@@ -338,7 +341,7 @@ function init_gui(image::AbstractArray; name="Tinker")
     return imagectx
 end;
 
-init_gui(file::AbstractString) = init_gui(load(file); name=file)
+init_image(file::AbstractString) = init_image(load(file); name=file)
 
 active_context = map(img_ctxs) do ic # signal dependent on img_ctxs
     if isempty(ic)
@@ -386,5 +389,8 @@ function set_mode_all(mode::Mode)
     set_mode(c, mode)
   end
 end
+
+include("guisetup.jl")
+
 
 end # module
