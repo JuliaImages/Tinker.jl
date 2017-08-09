@@ -19,6 +19,7 @@ Rectangle() = Rectangle(0,0,-1,-1)
 Base.isempty(R::Rectangle) = R.w <= 0 || R.h <= 0
 
 mutable struct ImageContext{T}
+    id::Int
     image
     canvas::GtkReactive.Canvas
     zr::Signal{ZoomRegion{T}}
@@ -29,7 +30,7 @@ mutable struct ImageContext{T}
     rectview::Signal{<:AbstractArray} # Holds bounding box of selection
 end
 
-ImageContext() = ImageContext(nothing, canvas(), Signal(ZoomRegion((1:10, 1:10))), -1, Dict("dummy"=>Signal(false)), Signal(Rectangle()), Signal([]), Signal([]))
+ImageContext() = ImageContext(-1, nothing, canvas(), Signal(ZoomRegion((1:10, 1:10))), -1, Dict("dummy"=>Signal(false)), Signal(Rectangle()), Signal([]), Signal([]))
 
 # Returns a view of an image with the given bounding region
 function get_view(image,x_min,y_min,x_max,y_max)
@@ -247,9 +248,9 @@ include("freehand_selection.jl")
 ## Sets up an image in a separate window with the ability to adjust view
 function init_image(image::AbstractArray; name="Tinker")
     # set up window
-    win = Window(name, size(image,2), size(image,1));
-    c = canvas(UserUnit);
-    push!(win, c);
+    win = Window(name, size(image,2), size(image,1))
+    c = canvas(UserUnit)
+    push!(win, c)
 
     # set up a zoom region
     zr = Signal(ZoomRegion(image))
@@ -284,7 +285,7 @@ function init_image(image::AbstractArray; name="Tinker")
     dummydict = Dict("pandrag"=>Signal(false),"zoomclick"=>Signal(false),"rectselect"=>Signal(false),"freehand"=>Signal(false),"polysel"=>Signal(false))
 
     # Context
-    imagectx=ImageContext(image,c,zr,1,dummydict,Signal(Rectangle()),Signal([]),
+    imagectx=ImageContext(length(value(img_ctxs))+1,image,c,zr,1,dummydict,Signal(Shape, Rectangle()),Signal([]),
                           Signal(view(image,1:size(image,2),1:size(image,1))))
 
     # Mouse actions
@@ -303,7 +304,7 @@ function init_image(image::AbstractArray; name="Tinker")
     imagectx.mouseactions = Dict("pandrag"=>pandrag["enabled"],"zoomclick"=>zoomclick["enabled"],"rectselect"=>rectselect["enabled"],"freehand"=>freehand["enabled"],"polysel"=>polysel["enabled"])
 
     imagectx.rectview = map(imagectx.points) do pts
-        if ispolygon(pts)
+        if !isempty(pts)
             x_min,x_max = minimum(map(n->n.x,pts)),maximum(map(n->n.x,pts))
             y_min,y_max =minimum(map(n->n.y,pts)),maximum(map(n->n.y,pts))
             get_view(image,x_min,y_min,x_max,y_max)
@@ -324,18 +325,30 @@ function init_image(image::AbstractArray; name="Tinker")
             drawrect(ctx, vd[1], colorant"blue", 2.0)
             drawrect(ctx, vd[2], colorant"blue", 2.0)
         end
-        if ispolygon(value(imagectx.points))
+        d = get_tolerance(imagectx)
+        if ispolygon(pts)
           # draw shape
-          drawline(ctx, pts, colorant"yellow", 1.0)
-          #drawshape(ctx, sh, get_tolerance(imagectx), colorant"yellow", 1.0)
-          #@show typeof(sh)
+          if typeof(sh) == RectHandle
+              recthandle = RectHandle(Rectangle(XY(pts[1].x,pts[1].y),XY(pts[3].x,pts[3].y)))
+              drawrecthandle(ctx, recthandle, d, colorant"yellow", 1.0)
+          elseif typeof(sh) == PolyHandle
+              drawpolyhandle(ctx, PolyHandle(pts), d, colorant"yellow", 1.0)
+          else
+              drawline(ctx, pts, colorant"yellow", 1.0)
+          end
         else
           # draw working line
-          drawline(ctx, pts, colorant"red", 1.0)
+          drawline(ctx, pts, colorant"yellow", 1.0)
+          if typeof(sh) == PolyHandle && length(pts) > 0
+              drawrect(ctx, Rectangle(pts[1].x-d,pts[1].y-d,2*d,2*d), colorant"yellow", 1.0)
+          end
         end
     end
 
     showall(win);
+
+    # shows measurements
+    display_measure(imagectx)
 
     push!(img_ctxs, push!(value(img_ctxs), imagectx))
     return imagectx
@@ -390,7 +403,7 @@ function set_mode_all(mode::Mode)
   end
 end
 
+include("measure.jl")
 include("guisetup.jl")
-
 
 end # module

@@ -11,13 +11,25 @@ function init_freehand_select(ctx::ImageContext)
     dummybtn = MouseButton{UserUnit}()
 
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
-      ctx.shape = polygon
-        if !ispolygon(value(ctx.points)) || !isinside(Point(btn.position), Point.(value(ctx.points)))
+        local a
+        try
+            a = !ispolygon(value(ctx.points)) || !isinside(Point(btn.position), Point.(value(ctx.points)))
+        catch a = false end
+        local b
+        try
+            b = ispolygon(value(ctx.points)) && isinside(Point(btn.position), Point.(value(ctx.points)))
+        catch b = true end
+        if a
+            # Initializing
             push!(drawing, true)
-            #push!(ctx.shape, Rectangle()) # some identifier of type of selection
-            push!(ctx.points, Vector{XY{Float64}}[])
             push!(ctx.points, [btn.position])
-        elseif ispolygon(value(ctx.points)) && isinside(Point(btn.position), Point.(value(ctx.points)))
+            push!(ctx.shape,Polygon()) # What type of shape to draw
+            #=shape = map(polygon) do p
+                push!(ctx.shape,p)
+            end
+            #append!(c.preserved, [shape])=#
+        elseif b
+            # Moving
             push!(moving,true)
             push!(diff, XY(btn.position.x-value(ctx.points)[1].x,
                            btn.position.y-value(ctx.points)[1].y))
@@ -84,7 +96,6 @@ function init_polygon_select(ctx::ImageContext)
     end
 
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
-      ctx.shape = polyhandle
         pts = value(ctx.points)
         if (ispolygon(pts) && near_vertex(btn.position,pts,tol) != -1)
             # modification actions
@@ -107,6 +118,11 @@ function init_polygon_select(ctx::ImageContext)
             push!(building,true)
             push!(ctx.points, [btn.position])
             push!(num_pts,1)
+            push!(ctx.shape, PolyHandle()) # set up ctx.shape to track ph
+            #=shape = map(polyhandle) do ph
+                push!(ctx.shape,ph)
+            end
+            #append!(c.preserved, [shape])=#
         elseif !ispolygon(pts) # adds to polygon
             if (length(pts) > 3 && pts[1].x-tol <= btn.position.x <=
                 pts[1].x+tol && pts[1].y-tol <= btn.position.y <= pts[1].y+tol)
@@ -114,7 +130,6 @@ function init_polygon_select(ctx::ImageContext)
                 pts[end] = pts[1]
                 push!(ctx.points,pts)
                 push!(num_pts, length(pts))
-                ctx.shape = polyhandle
             else # add to polygon
                 value(ctx.points)[end] = btn.position
                 push!(num_pts, length(pts))

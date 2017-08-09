@@ -101,7 +101,6 @@ function init_rect_select(ctx::ImageContext)
     # Mouse action signals
     dummybtn = MouseButton{UserUnit}()
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
-      ctx.shape = recthandle
         hn = nearby_handle(btn.position,value(recthandle),tol)
         if !isempty(value(rect)) && !isempty(hn)
             # Handle actions
@@ -130,6 +129,11 @@ function init_rect_select(ctx::ImageContext)
             push!(moving,false)
             push!(modifying,false)
             push!(pts,(btn.position,btn.position))
+            push!(ctx.shape,RectHandle()) # Shape is a RectHandle
+            #=shape = map(recthandle) do rh
+                push!(ctx.shape,rh)
+            end
+            #append!(c.preserved, [shape])=#
         end
         nothing
     end
