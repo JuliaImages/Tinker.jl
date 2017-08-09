@@ -2,7 +2,6 @@ using Tinker, Base.Test, TestImages, GtkReactive
 
 # make sure init_image runs
 Tinker.init_image(testimage("cameraman.tif"); name="Testing")
-Tinker.init_image(testimage("pirate.tif"); name="Testing")
 Reactive.run_till_now()
 @test value(Tinker.active_context) == value(Tinker.img_ctxs)[end]
 Tinker.set_mode(Tinker.rect)
