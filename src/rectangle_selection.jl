@@ -1,8 +1,8 @@
 # Returns the handle near click or an empty handle
-function nearby_handle(pt::XY, rh::RectHandle)
+function nearby_handle(pt::XY, rh::RectHandle, t::Float64)
     for i in 1:length(rh.h)
-        if (rh.h[i].x-5 <= pt.x <= rh.h[i].x+5 &&
-            rh.h[i].y-5 <= pt.y <= rh.h[i].y+5)
+        if (rh.h[i].x-t <= pt.x <= rh.h[i].x+t &&
+            rh.h[i].y-t <= pt.y <= rh.h[i].y+t)
             return rh.h[i]
         end
     end
@@ -79,17 +79,17 @@ end
 # Mouse actions for rectangular selection creation and modification
 function init_rect_select(ctx::ImageContext)
     c = ctx.canvas
-    
+    tol = get_tolerance(ctx)
+
     # Build rectangle & points array
     pts = Signal((XY{UserUnit}(-1.0,-1.0),XY{UserUnit}(-1.0,-1.0)))
     rect = map(p->Rectangle(p[1],p[2]),pts)
-    recthandle = map(r->RectHandle(r),rect)
+    recthandle = map(r->RectHandle(r),rect) # this -> ctx.shape
     ctx.points = map(rect) do r
         [XY(r.x,r.y),XY(r.x+r.w,r.y),XY(r.x+r.w,r.y+r.h),XY(r.x,r.y+r.h),
          XY(r.x,r.y)]
     end
-    ctx.shape = rect
-    
+
     # Set of signals used for mouse action logic
     enabled = Signal(true)
     modifying = Signal(false)
@@ -101,7 +101,7 @@ function init_rect_select(ctx::ImageContext)
     # Mouse action signals
     dummybtn = MouseButton{UserUnit}()
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
-        hn = nearby_handle(btn.position,value(recthandle))
+        hn = nearby_handle(btn.position,value(recthandle),tol)
         if !isempty(value(rect)) && !isempty(hn)
             # Handle actions
             push!(modifying,true)
@@ -129,10 +129,15 @@ function init_rect_select(ctx::ImageContext)
             push!(moving,false)
             push!(modifying,false)
             push!(pts,(btn.position,btn.position))
+            push!(ctx.shape,RectHandle()) # Shape is a RectHandle
+            #=shape = map(recthandle) do rh
+                push!(ctx.shape,rh)
+            end
+            #append!(c.preserved, [shape])=#
         end
         nothing
     end
-    
+
     # Modifies rectangle by handle
     sigmod = map(filterwhen(modifying, dummybtn, c.mouse.motion)) do btn
         if !isempty(value(modhandle))

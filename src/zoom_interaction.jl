@@ -22,7 +22,7 @@ function zoom_percent(z::Float64, zr::ZoomRegion, center::XY{Int})
         x = offset.x
         offset = XY(x, fsize.y-csize.y)
     end
-    
+
     return (offset.y+1..offset.y+csize.y, offset.x+1..offset.x+csize.x)
 end # return value can be pushed to a zr
 
@@ -167,7 +167,7 @@ function init_zoom_click(ctx::ImageContext)
             if btn.button == 1 && btn.modifiers == 256 #if left click & no modifiers
                 center = XY(Int(round(Float64(btn.position.x))),
                             Int(round(Float64(btn.position.y))))
-                zoom_in(ctx, center) 
+                zoom_in(ctx, center)
             elseif btn.button == 3 || btn.modifiers == 260 # right click/ctrl
                 center = XY(Int(round(Float64(btn.position.x))),
                             Int(round(Float64(btn.position.y))))
