@@ -4,8 +4,8 @@ using Tinker, Base.Test, TestImages, GtkReactive
 Tinker.init_image(testimage("cameraman.tif"); name="Testing")
 Reactive.run_till_now()
 @test value(Tinker.active_context) == value(Tinker.img_ctxs)[end]
-Tinker.set_mode(Tinker.rect)
-Tinker.set_mode_all(Tinker.freehand)
+Tinker.set_mode_all(Tinker.rectangle_mode)
+#Tinker.set_mode_all(Tinker.freehand_mode)
 
 # Test zoom functions
 test_zr = ZoomRegion((1:100, 1:200))

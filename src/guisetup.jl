@@ -16,19 +16,19 @@ g[1,1] = t
 
 # Button actions for mode switches
 zoomid = signal_connect(bz, "clicked") do z
-  set_mode_all(zm)
+  set_mode_all(zoom_mode)
 end
 
 rectid = signal_connect(br, "clicked") do r
-  set_mode_all(rect)
+  set_mode_all(rectangle_mode)
 end
 
 freeid = signal_connect(bf, "clicked") do f
-  set_mode_all(freehand)
+  set_mode_all(freehand_mode)
 end
 
 polyid = signal_connect(bp, "clicked") do p
-  set_mode_all(poly)
+  set_mode_all(polygon_mode)
 end
 
 nb = Notebook()

@@ -30,7 +30,9 @@ mutable struct ImageContext{T}
     rectview::Signal{<:AbstractArray} # Holds bounding box of selection
 end
 
-ImageContext() = ImageContext(-1, nothing, canvas(), Signal(ZoomRegion((1:10, 1:10))), -1, Dict("dummy"=>Signal(false)), Signal(Rectangle()), Signal([]), Signal([]))
+ImageContext() = ImageContext(-1, nothing, canvas(),
+Signal(ZoomRegion((1:10, 1:10))), -1, Dict("dummy"=>Signal(false)),
+Signal(Rectangle()), Signal([]), Signal([]))
 
 # Returns a view of an image with the given bounding region
 function get_view(image,x_min,y_min,x_max,y_max)
@@ -282,11 +284,14 @@ function init_image(image::AbstractArray; name="Tinker")
     end
 
     # Placeholder dictionary for context
-    dummydict = Dict("pandrag"=>Signal(false),"zoomclick"=>Signal(false),"rectselect"=>Signal(false),"freehand"=>Signal(false),"polysel"=>Signal(false))
+    dummydict = Dict("pandrag"=>Signal(false),"zoomclick"=>Signal(false),
+    "rectselect"=>Signal(false),"freehand"=>Signal(false),"polysel"=>
+    Signal(false),"modshape"=>Signal(false))
 
     # Context
-    imagectx=ImageContext(length(value(img_ctxs))+1,image,c,zr,1,dummydict,Signal(Shape, Rectangle()),Signal([]),
-                          Signal(view(image,1:size(image,2),1:size(image,1))))
+    imagectx=ImageContext(length(value(img_ctxs))+1,image,c,zr,1,dummydict,
+    Signal(Shape, Rectangle()),Signal([]),Signal(view(image,1:size(image,2),
+    1:size(image,1))))
 
     # Mouse actions
     pandrag = init_pan_drag(c, zr)
@@ -294,14 +299,18 @@ function init_image(image::AbstractArray; name="Tinker")
     rectselect = init_rect_select(imagectx)
     freehand = init_freehand_select(imagectx)
     polysel = init_polygon_select(imagectx)
+    modshape = init_modify_shape(imagectx)
 
     push!(pandrag["enabled"],false)
     push!(zoomclick["enabled"],false)
     push!(rectselect["enabled"],false)
     push!(freehand["enabled"],false)
     push!(polysel["enabled"],false)
+    push!(modshape["enabled"],false)
 
-    imagectx.mouseactions = Dict("pandrag"=>pandrag["enabled"],"zoomclick"=>zoomclick["enabled"],"rectselect"=>rectselect["enabled"],"freehand"=>freehand["enabled"],"polysel"=>polysel["enabled"])
+    imagectx.mouseactions = Dict("pandrag"=>pandrag["enabled"],"zoomclick"=>
+    zoomclick["enabled"],"rectselect"=>rectselect["enabled"],"freehand"=>
+    freehand["enabled"],"polysel"=>polysel["enabled"],"modshape"=>modshape["enabled"])
 
     imagectx.rectview = map(imagectx.points) do pts
         if !isempty(pts)
@@ -365,7 +374,7 @@ active_context = map(img_ctxs) do ic # signal dependent on img_ctxs
     end
 end
 
-@enum Mode zm rect freehand poly
+@enum Mode zoom_mode rectangle_mode freehand_mode polygon_mode
 
 function set_mode(ctx::ImageContext, mode::Mode)
     push!(ctx.mouseactions["pandrag"], false)
@@ -373,19 +382,22 @@ function set_mode(ctx::ImageContext, mode::Mode)
     push!(ctx.mouseactions["rectselect"], false)
     push!(ctx.mouseactions["freehand"], false)
     push!(ctx.mouseactions["polysel"],false)
-    if mode == zm # turn on zoom controls
+    if mode == zoom_mode # turn on zoom controls
         println("Zoom mode")
         push!(ctx.mouseactions["pandrag"], true)
         push!(ctx.mouseactions["zoomclick"], true)
-    elseif mode == rect # turn on rectangular region selection controls
+    elseif mode == rectangle_mode # turn on rectangular region selection controls
         println("Rectangle mode")
         push!(ctx.mouseactions["rectselect"], true)
-    elseif mode == freehand # freehand select
+        #push!(ctx.mouseactions["modshape"],true)
+    elseif mode == freehand_mode # freehand select
         println("Freehand mode")
         push!(ctx.mouseactions["freehand"],true)
-    elseif mode == poly # polygon select
+        #push!(ctx.mouseactions["modshape"],true)
+    elseif mode == polygon_mode # polygon select
         println("Polygon mode")
         push!(ctx.mouseactions["polysel"],true)
+        #push!(ctx.mouseactions["modshape"],true)
     end
 end
 

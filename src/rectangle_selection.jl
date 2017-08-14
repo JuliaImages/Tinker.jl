@@ -102,6 +102,9 @@ function init_rect_select(ctx::ImageContext)
     dummybtn = MouseButton{UserUnit}()
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
         hn = nearby_handle(btn.position,value(recthandle),tol)
+        local isin
+        try isin = isinside(Point(btn.position),Point.(value(ctx.points)))
+        catch isin = false end
         if !isempty(value(rect)) && !isempty(hn)
             # Handle actions
             push!(modifying,true)
@@ -110,30 +113,20 @@ function init_rect_select(ctx::ImageContext)
             push!(modhandle,hn)
             push!(pts, (get_p1(hn, value(recthandle)),
                         get_p2(hn, value(recthandle),btn)))
-        elseif (!isempty(value(rect)) && Float64(value(rect).x) <
-                Float64(btn.position.x) < Float64(value(rect).x+value(rect).w)
-                && Float64(value(rect).y) < Float64(btn.position.y) <
-                Float64(value(rect).y+value(rect).h))
+        elseif (!isempty(value(rect)) && isin)
             # Motion actions
             push!(moving,true)
             push!(modifying,false)
             push!(initializing,false)
             push!(diff, XY(btn.position.x-value(rect).x,
                            btn.position.y-value(rect).y))
-        elseif isempty(value(rect)) || !(Float64(value(rect).x) <
-               Float64(btn.position.x) < Float64(value(rect).x+value(rect).w)
-               && Float64(value(rect).y) < Float64(btn.position.y) <
-                                         Float64(value(rect).y+value(rect).h))
+        elseif (isempty(value(rect)) || !isin)
             # Build actions
             push!(initializing,true)
             push!(moving,false)
             push!(modifying,false)
             push!(pts,(btn.position,btn.position))
-            push!(ctx.shape,RectHandle()) # Shape is a RectHandle
-            #=shape = map(recthandle) do rh
-                push!(ctx.shape,rh)
-            end
-            #append!(c.preserved, [shape])=#
+            push!(ctx.shape,RectHandle()) # shape is a RectHandle
         end
         nothing
     end
@@ -174,6 +167,6 @@ function init_rect_select(ctx::ImageContext)
 
     push!(ctx.points, Vector{XY{Float64}}[])
 
-    append!(c.preserved, [sigstart, sigmod, sigmove, siginit, sigend])
+    append!(c.preserved, [sigstart, siginit, sigmod, sigmove, sigend])
     Dict("enabled"=>enabled)
 end
