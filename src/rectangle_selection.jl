@@ -1,8 +1,7 @@
 # Returns the handle near click or an empty handle
 function nearby_handle(pt::XY, rh::RectHandle, t::Float64)
     for i in 1:length(rh.h)
-        if (rh.h[i].x-t <= pt.x <= rh.h[i].x+t &&
-            rh.h[i].y-t <= pt.y <= rh.h[i].y+t)
+        if (rh.h[i].x-t<=pt.x<=rh.h[i].x+t && rh.h[i].y-t<=pt.y<=rh.h[i].y+t)
             return rh.h[i]
         end
     end
@@ -51,6 +50,17 @@ function get_p1(h::Handle, rh::RectHandle)
     return p1
 end
 
+# For point-based modification
+function get_p1(index::Int, rh::Array{XY})
+    if isodd(index)
+        index > 4 && return rh[index-4] # test this
+        index < 4 && return rh[index+4]
+    else
+        (index == 2 || index == 8) && return rh[5]
+        (index == 4 || index == 6) && return rh[1]
+    end
+end
+
 # Gets dynamic point for modification by handle
 function get_p2(h::Handle, rh::RectHandle, btn)
     if h.pos[end] == 'c' # 'h' is a corner
@@ -76,56 +86,86 @@ function get_p2(h::Handle, rh::RectHandle, btn)
     return p2
 end
 
+# For point-based modification
+function get_p2(index::Int, rh::Array{XY}, p::XY)
+    if isodd(index)
+        return p
+    else
+        index == 2 && return XY(rh[1].x, p.y)
+        index == 4 && return XY(p.x, rh[5].y)
+        index == 6 && return XY(rh[5].x, p.y)
+        index == 8 && return XY(p.x, rh[1].y)
+    end
+end
+
+# Returns array of all points that form rectangle made out of p1,p2
+function two_point_rect(p1,p2)
+    r = Rectangle(p1,p2)
+    x,y,w,h = r.x,r.y,r.w,r.h
+    return [XY(x,y),XY(x+w,y),XY(x+w,y+h),XY(x,y+h),XY(x,y)]
+end
+
+# Returns array of all points that form rectangle, plus midpoints on sides
+function two_point_rh(p1,p2)
+    r = Rectangle(p1,p2)
+    x,y,w,h = r.x,r.y,r.w,r.h
+    return [XY(x,y),XY(x+(w/2),y),XY(x+w,y),XY(x+w,y+(h/2)),XY(x+r.w,y+h),
+    XY(x+(w/2),y+h),XY(x,y+h),XY(x,y+(h/2)),XY(x,y)]
+end
+
 # Mouse actions for rectangular selection creation and modification
 function init_rect_select(ctx::ImageContext)
     c = ctx.canvas
     tol = get_tolerance(ctx)
 
     # Build rectangle & points array
-    pts = Signal((XY{UserUnit}(-1.0,-1.0),XY{UserUnit}(-1.0,-1.0)))
-    rect = map(p->Rectangle(p[1],p[2]),pts)
-    recthandle = map(r->RectHandle(r),rect) # this -> ctx.shape
-    ctx.points = map(rect) do r
-        [XY(r.x,r.y),XY(r.x+r.w,r.y),XY(r.x+r.w,r.y+r.h),XY(r.x,r.y+r.h),
-         XY(r.x,r.y)]
-    end
+    corners = Signal((XY{UserUnit}(-1.0,-1.0),XY{UserUnit}(-1.0,-1.0)))
+    rh = map(c->two_point_rh(c[1],c[2]),corners)
 
     # Set of signals used for mouse action logic
     enabled = Signal(true)
     modifying = Signal(false)
     moving = Signal(false)
     initializing = Signal(false)
-    modhandle = Signal(Handle()) # handle that was clicked
+    modind = Signal(-1) # handle that was clicked
     diff = Signal(XY(0.0,0.0)) # difference b/t click & rect pos
 
     # Mouse action signals
     dummybtn = MouseButton{UserUnit}()
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
-        hn = nearby_handle(btn.position,value(recthandle),tol)
+        cnr = value(corners)
+        # Index of modification point near click, if exists
+        local nearpt
+        if typeof(value(ctx.shape)) == RectHandle
+            nearpt = near_vertex(btn.position,value(rh),tol)
+        else nearpt = -1 end
+        # Calculates isinside with exception handling
         local isin
         try isin = isinside(Point(btn.position),Point.(value(ctx.points)))
         catch isin = false end
-        if !isempty(value(rect)) && !isempty(hn)
-            # Handle actions
+        if cnr[1]!=cnr[2] && nearpt > 0
+            # Modification actions
+            println("Modifying")
             push!(modifying,true)
             push!(moving,false)
             push!(initializing,false)
-            push!(modhandle,hn)
-            push!(pts, (get_p1(hn, value(recthandle)),
-                        get_p2(hn, value(recthandle),btn)))
-        elseif (!isempty(value(rect)) && isin)
+            push!(modind,nearpt)
+            push!(corners,(get_p1(nearpt,value(rh)),get_p2(nearpt,value(rh),btn.position)))
+        elseif (cnr[1]!=cnr[2] && isin)
             # Motion actions
+            println("Moving")
             push!(moving,true)
             push!(modifying,false)
             push!(initializing,false)
-            push!(diff, XY(btn.position.x-value(rect).x,
-                           btn.position.y-value(rect).y))
-        elseif (isempty(value(rect)) || !isin)
+            push!(diff, XY{Float64}(btn.position)-XY{Float64}(value(ctx.points)[1]))#XY(btn.position.x-value(ctx.points)[1].x,btn.position.y-value(ctx.points)[1].y))
+        elseif (cnr[1]==cnr[2] || !isin)
             # Build actions
+            println("Building")
             push!(initializing,true)
             push!(moving,false)
             push!(modifying,false)
-            push!(pts,(btn.position,btn.position))
+            push!(corners,(btn.position,btn.position))
+            push!(ctx.points,two_point_rect(btn.position,btn.position))
             push!(ctx.shape,RectHandle()) # shape is a RectHandle
         end
         nothing
@@ -133,9 +173,10 @@ function init_rect_select(ctx::ImageContext)
 
     # Modifies rectangle by handle
     sigmod = map(filterwhen(modifying, dummybtn, c.mouse.motion)) do btn
-        if !isempty(value(modhandle))
-            push!(pts, (value(pts)[1],
-                        get_p2(value(modhandle),value(recthandle),btn)))
+        cnr = value(corners)
+        if value(modind) > 0
+            push!(corners, (cnr[1],get_p2(value(modind),value(rh),btn.position)))
+            push!(ctx.points,two_point_rect(cnr[1],get_p2(value(modind),value(rh),btn.position)))
         end
         nothing
     end
@@ -143,17 +184,18 @@ function init_rect_select(ctx::ImageContext)
     # Moves rectangle
     sigmove = map(filterwhen(moving, dummybtn, c.mouse.motion)) do btn
         # move
-        push!(pts,(XY(btn.position.x-value(diff).x,
-                      btn.position.y-value(diff).y),
-                   XY((btn.position.x-value(diff).x)+value(rect).w,
-                      (btn.position.y-value(diff).y)+value(rect).h)))
+        push!(corners, (value(ctx.points)[1],value(ctx.points)[3]))
+        push!(ctx.points, move_polygon_to(value(ctx.points),XY(btn.position.x-
+              value(diff).x,btn.position.y-value(diff).y)))
         nothing
     end
 
     # Builds rectangle
     siginit = map(filterwhen(initializing,dummybtn,c.mouse.motion)) do btn
         # init
-        push!(pts, (value(pts)[1],btn.position))
+        cnr = value(corners)
+        push!(corners,(cnr[1],btn.position))
+        push!(ctx.points,two_point_rect(cnr[1],btn.position))
         nothing
     end
 

@@ -6,7 +6,7 @@ function init_freehand_select(ctx::ImageContext)
     drawing = Signal(false)
     moving = Signal(false)
     diff = Signal(XY(NaN,NaN))
-    polygon = map(p->Polygon(p),ctx.points) # this -> ctx.shape
+    polygon = map(p->Polygon(p),ctx.points)
 
     dummybtn = MouseButton{UserUnit}()
 
@@ -57,7 +57,7 @@ function init_freehand_select(ctx::ImageContext)
     Dict("enabled"=>enabled)
 end
 
-function near_vertex(pt::XY, p, t::Float64)
+function near_vertex(pt::XY, p::Array, t::Float64)
     # returns index of nearby point
     for i in 1:length(p)
         if (p[i].x-t <= pt.x <= p[i].x+t) && (p[i].y-t <= pt.y <= p[i].y+t)
