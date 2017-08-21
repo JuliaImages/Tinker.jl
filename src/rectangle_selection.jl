@@ -145,7 +145,6 @@ function init_rect_select(ctx::ImageContext)
         catch isin = false end
         if cnr[1]!=cnr[2] && nearpt > 0
             # Modification actions
-            println("Modifying")
             push!(modifying,true)
             push!(moving,false)
             push!(initializing,false)
@@ -153,14 +152,12 @@ function init_rect_select(ctx::ImageContext)
             push!(corners,(get_p1(nearpt,value(rh)),get_p2(nearpt,value(rh),btn.position)))
         elseif (cnr[1]!=cnr[2] && isin)
             # Motion actions
-            println("Moving")
             push!(moving,true)
             push!(modifying,false)
             push!(initializing,false)
             push!(diff, XY{Float64}(btn.position)-XY{Float64}(value(ctx.points)[1]))#XY(btn.position.x-value(ctx.points)[1].x,btn.position.y-value(ctx.points)[1].y))
         elseif (cnr[1]==cnr[2] || !isin)
             # Build actions
-            println("Building")
             push!(initializing,true)
             push!(moving,false)
             push!(modifying,false)

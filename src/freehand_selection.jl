@@ -36,7 +36,7 @@ function init_freehand_select(ctx::ImageContext)
     end
 
     sigmove = map(filterwhen(moving, dummybtn, c.mouse.motion)) do btn
-        push!(ctx.points, move_polygon_to(value(ctx.points),XY(btn.position.x-value(diff).x, btn.position.y-value(diff).y)))
+        #push!(ctx.points, move_polygon_to(value(ctx.points),XY(btn.position.x-value(diff).x, btn.position.y-value(diff).y)))
         nothing
     end
 
@@ -143,15 +143,15 @@ function init_polygon_select(ctx::ImageContext)
 
     # Moves polygon
     sigmove = map(filterwhen(moving,dummybtn,c.mouse.motion)) do btn
-        push!(ctx.points, move_polygon_to(value(ctx.points),XY(btn.position.x-
-              value(diff).x,btn.position.y-value(diff).y)))
+        #=push!(ctx.points, move_polygon_to(value(ctx.points),XY(btn.position.x-
+              value(diff).x,btn.position.y-value(diff).y)))=#
         nothing
     end
 
     # Modifies polygon by handle
     sigmodify = map(filterwhen(modifying,dummybtn,c.mouse.motion)) do btn
         # moves clicked point
-        pts = value(ctx.points)
+        #=pts = value(ctx.points)
         if value(modhandle) != 1 && value(modhandle) != -1
             # move a middle point
             pts[value(modhandle)] = btn.position
@@ -161,7 +161,7 @@ function init_polygon_select(ctx::ImageContext)
             pts[1] = btn.position
             pts[end] = btn.position
             push!(ctx.points,pts)
-        end
+        end=#
         nothing
     end
 
@@ -183,82 +183,79 @@ end
 function init_modify_shape(ctx::ImageContext)
     c = ctx.canvas
     enabled = Signal(false)
-    #=
+    #=tol = get_tolerance(ctx)
     # General signals
     moving = Signal(false)
-    modifying = Signal(false)
-    modhandle = Signal(Handle())
-    modpt = Signal(XY(NaN,NaN))
+    modr,modp = Signal(false),Signal(false)
+    modind = Signal(-1)
     diff = Signal(XY(NaN,NaN))
-    dummybtn = MouseButton{UserUnit}()
     # Rectangle modification signals
     corners = Signal((XY{UserUnit}(-1.0,-1.0),XY{UserUnit}(-1.0,-1.0)))
-    rect = map(p->Rectangle(p[1],p[2]),corners)
-    recthandle = map(r->RectHandle(r),rect)
-    rpoints = map(rect) do r
-        [XY(r.x,r.y),XY(r.x+r.w,r.y),XY(r.x+r.w,r.y+r.h),XY(r.x,r.y+r.h),
-        XY(r.x,r.y)]
-    end
-    ppoints =
-    ctx.points = map(rpoints,ppoints,ctx.shape) do r,p,sh
-        if typeof(sh) == RectHandle
-            r
-        elseif typeof(sh)
+    rh = map(c->two_point_rh(c[1],c[2]),corners)
 
+    # Mouse action signals
+    dummybtn = MouseButton{UserUnit}()
+    # Initialize everything
     sigstart = map(filterwhen(enabled, dummybtn, c.mouse.buttonpress)) do btn
         # conditionals
         pts = value(ctx.points)
-        if false # click on a handle
-            push!(modifying,true)
-        elseif (ispolygon(pts) && isinside(Point(btn.position),Point.(pts)))
-            push!(moving,true)
-            push!(diff, btn.position-pts[1])
-        end
-        nothing
-    end
-
-    sigmove = map(filterwhen(moving, dummybtn, c.mouse.motion)) do btn
         sh = value(ctx.shape)
-        d = value(diff)
-        r = value(rect)
-        if typeof(value(ctx.shape)) == RectHandle
-            # move
-            #println("Moving rect")
-            p = (XY{Float64}(btn.position)-d,XY{Float64}(btn.position)-d+XY{Float64}(r.w,r.h))
-            #@show typeof(p)
-            #@show typeof(value(corners))
-            push!(corners,p)
-        elseif typeof(sh) == Polygon || typeof(sh) == PolyHandle
-            # move
-            #println("Moving poly")
-            push!(ctx.points, move_polygon_to(value(ctx.points),XY{Float64}(btn.position)-value(diff)))
-        end
-        nothing
-    end
-
-    sigmodify = map(filterwhen(modifying, dummybtn, c.mouse.motion)) do btn
-        # modify any shape
-        sh = value(ctx.shape)
+        local nearpt
         if typeof(sh) == RectHandle
-            # modify
-            println("Modifying rh")
+            nearpt = near_vertex(btn.position,value(rh),tol)
         elseif typeof(sh) == PolyHandle
-            # modify
-            println("modifying ph")
+            nearpt = near_vertex(btn.position,pts,tol)
+        else nearpt = -1 end
+        local isin
+        try isin = isinside(Point(btn.position),Point.(pts)) catch isin = false end
+        if nearpt > 0
+            println("nearpt = $nearpt")
+            typeof(sh) == RectHandle && push!(modr,true)
+            typeof(sh) == PolyHandle && push!(modp,true)
+            push!(moving,false)
+            push!(modind,nearpt)
+        elseif (ispolygon(pts) && isin)
+            push!(moving,true)
+            push!(modr,false)
+            push!(modp,false)
+            push!(diff, XY{Float64}(btn.position)-XY{Float64}(pts[1]))
         end
+        nothing
+    end
+
+    # Move any shape
+    sigmove = map(filterwhen(moving, dummybtn, c.mouse.motion)) do btn
+        #push!(corners, (value(ctx.points)[1],value(ctx.points)[3]))
+        println("moving")
+        push!(ctx.points, move_polygon_to(value(ctx.points),XY(btn.position.x-
+              value(diff).x,btn.position.y-value(diff).y)))
+        nothing
+    end
+
+    # Modify rectangle
+    sigrect = map(filterwhen(modr, dummybtn, c.mouse.motion)) do btn
+        # modify
+        println("modifying $(value(modind)) (r)")
+        nothing
+    end
+
+    # Modify polygon
+    sigpoly = map(filterwhen(modp,dummybtn,c.mouse.motion)) do btn
+        # modify
+        println("modifying $(value(modind)) (p)")
         nothing
     end
 
     sigend = map(filterwhen(enabled, dummybtn, c.mouse.buttonrelease)) do btn
         # reset signals
         push!(moving,false)
-        push!(modifying,false)
-        push!(modhandle,Handle())
-        push!(modpt,XY(NaN,NaN))
+        push!(modr,false)
+        push!(modp,false)
+        push!(modind,-1)
+        #push!(modpt,XY(NaN,NaN))
         nothing
     end
 
-    append!(c.preserved, [sigstart, sigmove, sigmodify, sigend])
-    =#
+    append!(c.preserved, [sigstart,sigmove,sigrect,sigpoly,sigend])=#
     Dict("enabled"=>enabled)
 end

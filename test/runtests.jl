@@ -38,18 +38,18 @@ Reactive.run_till_now()
 r1 = Tinker.Rectangle(XY(5.0, 56.8), XY(23.4, 10.0))
 r2 = Tinker.Rectangle(5.0, 10.0, 18.4, 46.8)
 @test r1 == r2
-# Test get_handle
+#=# Test get_handle
 recth = Tinker.RectHandle(r1)
-@test recth.h[3] == Tinker.get_handle(recth, "trc")
+@test recth.h[3] == Tinker.get_handle(recth, "trc")=#
 # Test get_p1
-@test XY{UserUnit}(23.4, 56.8) == Tinker.get_p1(recth.h[1], recth)
+#=@test XY{UserUnit}(23.4, 56.8) == Tinker.get_p1(recth.h[1], recth)
 @test XY{UserUnit}(23.4, 56.8) == Tinker.get_p1(recth.h[2], recth)
 @test XY{UserUnit}(5.0, 56.8) == Tinker.get_p1(recth.h[3], recth)
 @test XY{UserUnit}(5.0, 10.0) == Tinker.get_p1(recth.h[4], recth)
 @test XY{UserUnit}(5.0, 10.0) == Tinker.get_p1(recth.h[5], recth)
 @test XY{UserUnit}(5.0, 10.0) == Tinker.get_p1(recth.h[6], recth)
 @test XY{UserUnit}(23.4, 10.0) == Tinker.get_p1(recth.h[7], recth)
-@test XY{UserUnit}(23.4, 56.8) == Tinker.get_p1(recth.h[8], recth)
+@test XY{UserUnit}(23.4, 56.8) == Tinker.get_p1(recth.h[8], recth)=#
 # Create fake buttonpress
 struct fake_buttonpress
     position::XY{UserUnit}
@@ -65,7 +65,7 @@ btn7 = fake_buttonpress(XY{UserUnit}(recth.h[7].x+0.1, recth.h[7].y-0.2))
 btn8 = fake_buttonpress(XY{UserUnit}(recth.h[8].x+0.1, recth.h[8].y-0.2))
 btn9 = fake_buttonpress(XY{UserUnit}(40.5, 80.2)) # not on a handle
 btn10 = fake_buttonpress(XY{UserUnit}(recth.h[1].x+3.2, recth.h[1].y-6.8)) #""
-# Test get_p2
+#=# Test get_p2
 @test XY{UserUnit}(btn1.position.x, btn1.position.y) ==
     Tinker.get_p2(recth.h[1], recth, btn1)
 @test XY{UserUnit}(recth.r.x, btn2.position.y) ==
@@ -81,13 +81,13 @@ btn10 = fake_buttonpress(XY{UserUnit}(recth.h[1].x+3.2, recth.h[1].y-6.8)) #""
 @test XY{UserUnit}(btn7.position.x, btn7.position.y) ==
     Tinker.get_p2(recth.h[7], recth, btn7)
 @test XY{UserUnit}(btn8.position.x, recth.r.y) ==
-    Tinker.get_p2(recth.h[8], recth, btn8)
+    Tinker.get_p2(recth.h[8], recth, btn8)=#
 # Test nearby_handle
-@test Tinker.nearby_handle(btn1.position, recth, 5.0) == recth.h[1]
+#=@test Tinker.nearby_handle(btn1.position, recth, 5.0) == recth.h[1]
 @test Tinker.nearby_handle(btn1_1.position, recth, 5.0) == recth.h[1]
 @test Tinker.nearby_handle(btn1.position, recth, 5.0) != recth.h[2]
 @test isempty(Tinker.nearby_handle(btn9.position, recth, 5.0))
-@test isempty(Tinker.nearby_handle(btn10.position, recth, 5.0))
+@test isempty(Tinker.nearby_handle(btn10.position, recth, 5.0))=#
 
 # Test get_view
 img = value(Tinker.active_context).image

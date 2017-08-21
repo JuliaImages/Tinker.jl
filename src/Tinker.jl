@@ -24,14 +24,14 @@ mutable struct ImageContext{T}
     canvas::GtkReactive.Canvas
     zr::Signal{ZoomRegion{T}}
     zl::Int # for tracking zoom level
-    mouseactions::Dict{String,Signal{Bool}}
+    mouseactions::Dict{String,Any}
     shape::Signal{<:Shape} # Tracks type of selection in the environment
     points::Signal{<:AbstractArray} # Holds points that define shape outline
     rectview::Signal{<:AbstractArray} # Holds bounding box of selection
 end
 
 ImageContext() = ImageContext(-1, nothing, canvas(),
-Signal(ZoomRegion((1:10, 1:10))), -1, Dict("dummy"=>Signal(false)),
+Signal(ZoomRegion((1:10, 1:10))), -1, Dict("dummy"=>Signal(false),"dummy2"=>Signal(4)),
 Signal(Rectangle()), Signal([]), Signal([]))
 
 # Returns a view of an image with the given bounding region
@@ -244,8 +244,9 @@ function Point(p::XY)
 end
 
 include("zoom_interaction.jl")
-include("rectangle_selection.jl")
-include("freehand_selection.jl")
+#include("rectangle_selection.jl")
+#include("freehand_selection.jl")
+include("selection_actions.jl")
 
 ## Sets up an image in a separate window with the ability to adjust view
 function init_image(image::AbstractArray; name="Tinker")
@@ -285,8 +286,9 @@ function init_image(image::AbstractArray; name="Tinker")
 
     # Placeholder dictionary for context
     dummydict = Dict("pandrag"=>Signal(false),"zoomclick"=>Signal(false),
-    "rectselect"=>Signal(false),"freehand"=>Signal(false),"polysel"=>
-    Signal(false),"modshape"=>Signal(false))
+    "select"=>Signal(false),"selmode"=>Signal(rectangle_mode))
+    #"rectselect"=>Signal(false),"freehand"=>Signal(false),"polysel"=>
+    #Signal(false),"modshape"=>Signal(false))
 
     # Context
     imagectx=ImageContext(length(value(img_ctxs))+1,image,c,zr,1,dummydict,
@@ -296,21 +298,22 @@ function init_image(image::AbstractArray; name="Tinker")
     # Mouse actions
     pandrag = init_pan_drag(c, zr)
     zoomclick = init_zoom_click(imagectx)
-    rectselect = init_rect_select(imagectx)
-    freehand = init_freehand_select(imagectx)
-    polysel = init_polygon_select(imagectx)
-    modshape = init_modify_shape(imagectx)
+    #rectselect = init_rect_select(imagectx)
+    #freehand = init_freehand_select(imagectx)
+    #polysel = init_polygon_select(imagectx)
+    #modshape = init_modify_shape(imagectx)
+    select = init_selection_actions(imagectx)
 
     push!(pandrag["enabled"],false)
     push!(zoomclick["enabled"],false)
-    push!(rectselect["enabled"],false)
-    push!(freehand["enabled"],false)
-    push!(polysel["enabled"],false)
-    push!(modshape["enabled"],false)
+    #push!(rectselect["enabled"],false)
+    #push!(freehand["enabled"],false)
+    #push!(polysel["enabled"],false)
+    #push!(modshape["enabled"],false)
 
     imagectx.mouseactions = Dict("pandrag"=>pandrag["enabled"],"zoomclick"=>
-    zoomclick["enabled"],"rectselect"=>rectselect["enabled"],"freehand"=>
-    freehand["enabled"],"polysel"=>polysel["enabled"],"modshape"=>modshape["enabled"])
+    zoomclick["enabled"],"select"=>select["enabled"],"selmode"=>select["mode"])#"rectselect"=>rectselect["enabled"],"freehand"=>
+    #freehand["enabled"],"polysel"=>polysel["enabled"],"modshape"=>modshape["enabled"])
 
     imagectx.rectview = map(imagectx.points) do pts
         if !isempty(pts)
@@ -322,7 +325,7 @@ function init_image(image::AbstractArray; name="Tinker")
         end
     end
 
-    append!(c.preserved, [pandrag,zoomclick,rectselect,freehand,polysel])
+    append!(c.preserved, [pandrag,zoomclick,select])#rectselect,freehand,polysel])
 
     # draw
     redraw = draw(c, imagesig, zr, viewdim, imagectx.points, imagectx.shape) do cnvs,img,r,vd,pts,sh
@@ -379,25 +382,32 @@ end
 function set_mode(ctx::ImageContext, mode::Mode)
     push!(ctx.mouseactions["pandrag"], false)
     push!(ctx.mouseactions["zoomclick"], false)
-    push!(ctx.mouseactions["rectselect"], false)
-    push!(ctx.mouseactions["freehand"], false)
-    push!(ctx.mouseactions["polysel"],false)
+    #push!(ctx.mouseactions["rectselect"], false)
+    #push!(ctx.mouseactions["freehand"], false)
+    #push!(ctx.mouseactions["polysel"],false)
+    push!(ctx.mouseactions["select"],false)
     if mode == zoom_mode # turn on zoom controls
         println("Zoom mode")
         push!(ctx.mouseactions["pandrag"], true)
         push!(ctx.mouseactions["zoomclick"], true)
     elseif mode == rectangle_mode # turn on rectangular region selection controls
         println("Rectangle mode")
-        push!(ctx.mouseactions["rectselect"], true)
+        #push!(ctx.mouseactions["rectselect"], true)
         #push!(ctx.mouseactions["modshape"],true)
+        push!(ctx.mouseactions["select"],true)
+        push!(ctx.mouseactions["selmode"],rectangle_mode)
     elseif mode == freehand_mode # freehand select
         println("Freehand mode")
-        push!(ctx.mouseactions["freehand"],true)
+        #push!(ctx.mouseactions["freehand"],true)
         #push!(ctx.mouseactions["modshape"],true)
+        push!(ctx.mouseactions["select"],true)
+        push!(ctx.mouseactions["selmode"],freehand_mode)
     elseif mode == polygon_mode # polygon select
         println("Polygon mode")
-        push!(ctx.mouseactions["polysel"],true)
+        #push!(ctx.mouseactions["polysel"],true)
         #push!(ctx.mouseactions["modshape"],true)
+        push!(ctx.mouseactions["select"],true)
+        push!(ctx.mouseactions["selmode"],polygon_mode)
     end
 end
 
