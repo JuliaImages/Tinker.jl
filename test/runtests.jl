@@ -1,11 +1,9 @@
 using Tinker, Base.Test, TestImages, GtkReactive
 
 # make sure init_image runs
-Tinker.init_image(testimage("cameraman.tif"); name="Testing")
+ctx = Tinker.init_image(testimage("cameraman.tif"); name="Testing")
 Reactive.run_till_now()
-@test value(Tinker.active_context) == value(Tinker.img_ctxs)[end]
 Tinker.set_mode_all(Tinker.rectangle_mode)
-#Tinker.set_mode_all(Tinker.freehand_mode)
 
 # Test zoom functions
 test_zr = ZoomRegion((1:100, 1:200))
@@ -38,59 +36,9 @@ Reactive.run_till_now()
 r1 = Tinker.Rectangle(XY(5.0, 56.8), XY(23.4, 10.0))
 r2 = Tinker.Rectangle(5.0, 10.0, 18.4, 46.8)
 @test r1 == r2
-#=# Test get_handle
-recth = Tinker.RectHandle(r1)
-@test recth.h[3] == Tinker.get_handle(recth, "trc")=#
-# Test get_p1
-#=@test XY{UserUnit}(23.4, 56.8) == Tinker.get_p1(recth.h[1], recth)
-@test XY{UserUnit}(23.4, 56.8) == Tinker.get_p1(recth.h[2], recth)
-@test XY{UserUnit}(5.0, 56.8) == Tinker.get_p1(recth.h[3], recth)
-@test XY{UserUnit}(5.0, 10.0) == Tinker.get_p1(recth.h[4], recth)
-@test XY{UserUnit}(5.0, 10.0) == Tinker.get_p1(recth.h[5], recth)
-@test XY{UserUnit}(5.0, 10.0) == Tinker.get_p1(recth.h[6], recth)
-@test XY{UserUnit}(23.4, 10.0) == Tinker.get_p1(recth.h[7], recth)
-@test XY{UserUnit}(23.4, 56.8) == Tinker.get_p1(recth.h[8], recth)=#
-# Create fake buttonpress
-struct fake_buttonpress
-    position::XY{UserUnit}
-end
-btn1 = fake_buttonpress(XY{UserUnit}(recth.h[1].x+0.1, recth.h[1].y-0.2))
-btn1_1 = fake_buttonpress(XY{UserUnit}(recth.h[1].x+3.2, recth.h[1].y-4.8))
-btn2 = fake_buttonpress(XY{UserUnit}(recth.h[2].x+0.1, recth.h[2].y-0.2))
-btn3 = fake_buttonpress(XY{UserUnit}(recth.h[3].x+0.1, recth.h[3].y-0.2))
-btn4 = fake_buttonpress(XY{UserUnit}(recth.h[4].x+0.1, recth.h[4].y-0.2))
-btn5 = fake_buttonpress(XY{UserUnit}(recth.h[5].x+0.1, recth.h[5].y-0.2))
-btn6 = fake_buttonpress(XY{UserUnit}(recth.h[6].x+0.1, recth.h[6].y-0.2))
-btn7 = fake_buttonpress(XY{UserUnit}(recth.h[7].x+0.1, recth.h[7].y-0.2))
-btn8 = fake_buttonpress(XY{UserUnit}(recth.h[8].x+0.1, recth.h[8].y-0.2))
-btn9 = fake_buttonpress(XY{UserUnit}(40.5, 80.2)) # not on a handle
-btn10 = fake_buttonpress(XY{UserUnit}(recth.h[1].x+3.2, recth.h[1].y-6.8)) #""
-#=# Test get_p2
-@test XY{UserUnit}(btn1.position.x, btn1.position.y) ==
-    Tinker.get_p2(recth.h[1], recth, btn1)
-@test XY{UserUnit}(recth.r.x, btn2.position.y) ==
-    Tinker.get_p2(recth.h[2], recth, btn2)
-@test XY{UserUnit}(btn3.position.x, btn3.position.y) ==
-    Tinker.get_p2(recth.h[3], recth, btn3)
-@test XY{UserUnit}(btn4.position.x, recth.h[5].y) ==
-    Tinker.get_p2(recth.h[4], recth, btn4)
-@test XY{UserUnit}(btn5.position.x, btn5.position.y) ==
-    Tinker.get_p2(recth.h[5], recth, btn5)
-@test XY{UserUnit}(recth.h[5].x, btn6.position.y) ==
-    Tinker.get_p2(recth.h[6], recth, btn6)
-@test XY{UserUnit}(btn7.position.x, btn7.position.y) ==
-    Tinker.get_p2(recth.h[7], recth, btn7)
-@test XY{UserUnit}(btn8.position.x, recth.r.y) ==
-    Tinker.get_p2(recth.h[8], recth, btn8)=#
-# Test nearby_handle
-#=@test Tinker.nearby_handle(btn1.position, recth, 5.0) == recth.h[1]
-@test Tinker.nearby_handle(btn1_1.position, recth, 5.0) == recth.h[1]
-@test Tinker.nearby_handle(btn1.position, recth, 5.0) != recth.h[2]
-@test isempty(Tinker.nearby_handle(btn9.position, recth, 5.0))
-@test isempty(Tinker.nearby_handle(btn10.position, recth, 5.0))=#
 
 # Test get_view
-img = value(Tinker.active_context).image
+img = ctx.image
 @test img == Tinker.get_view(img, 1, 1, size(img,2), size(img,1))
 @test img == Tinker.get_view(img, -50, -50, size(img,2)+20, size(img,1))
 @test view(img, Int(floor(size(img,1)/4)):Int(floor(size(img,1)/2)),
@@ -109,3 +57,63 @@ img = value(Tinker.active_context).image
 # Test is_point
 @test Tinker.near_vertex(XY(5.4,2.8),[XY(4,4),XY(5,5),XY(6,7), XY(4,20),XY(9,9),XY(4,4)],5.0) == 1
 @test Tinker.near_vertex(XY(-4,-9),[XY(4,4),XY(5,5),XY(6,7), XY(4,20),XY(9,9),XY(4,4)],5.0) == -1
+
+
+## SELECTION_ACTIONS.jl
+# Test two_point_rect & two_point_rh
+rect1 = Tinker.two_point_rect(XY(8.9,0),XY(2,12.3))
+recth1 = Tinker.two_point_rh(XY(8.9,0),XY(2,12.3))
+@test rect1[1] == recth1[1]
+@test rect1[2] == recth1[3]
+@test rect1[3] == recth1[5]
+@test rect1[4] == recth1[7]
+@test rect1[1].y == recth1[2].y
+@test rect1[2].x == recth1[4].x
+@test rect1[3].y == recth1[6].y
+@test rect1[4].x == recth1[8].x
+
+# Test near_point
+p1,p2,p3,p4,p5 = XY(0,0),XY(0.1,-0.1),XY(5.0, 5.0),XY(6,0),XY(0,6) # test pts
+@test Tinker.near_point(p1, p2, 5.0) # very close
+@test Tinker.near_point(p1, p3, 5.0) # limit of tolerance
+@test !Tinker.near_point(p1, p3, 2.5) # not within tolerance
+@test !Tinker.near_point(p1, p4, 5.0) # x false, y true
+@test !Tinker.near_point(p1, p5, 5.0) # y true, x false
+@test Tinker.near_point(p1, p1, 2.0) # same point
+
+# Test near_vertex
+p = [XY(0,0), XY(3,5), XY(7,4), XY(6,2), XY(0,0)] # test array
+@test Tinker.near_vertex(p1, p, 5.0) == 1 # identical point
+@test Tinker.near_vertex(p2, p, 0.1) == 1 # limit of tolerance
+@test Tinker.near_vertex(p3, p, 2.0) == 2
+@test Tinker.near_vertex(p4, p, 4.9) == 3
+@test Tinker.near_vertex(p4, p, 2.0) == 4
+@test Tinker.near_vertex(p5, p, 2.9) == -1 # false
+
+# Test get_p1
+rh = Tinker.two_point_rh(XY(1,1),XY(5.6,7.8))
+@test Tinker.get_p1(1, rh) == rh[5]
+@test Tinker.get_p1(3, rh) == rh[7]
+@test Tinker.get_p1(5, rh) == rh[1]
+@test Tinker.get_p1(7, rh) == rh[3]
+@test Tinker.get_p1(2, rh) == rh[5]
+@test Tinker.get_p1(4, rh) == rh[1]
+@test Tinker.get_p1(6, rh) == rh[1]
+@test Tinker.get_p1(8, rh) == rh[5]
+@test isnan(Tinker.get_p1(9,rh).x)
+
+# Test get_p2
+@test Tinker.get_p2(1, rh, p3) == p3
+@test Tinker.get_p2(3, rh, p3) == p3
+@test Tinker.get_p2(5, rh, p3) == p3
+@test Tinker.get_p2(7, rh, p5) == p5
+@test Tinker.get_p2(2, rh, p3) == XY(rh[1].x,p3.y)
+@test Tinker.get_p2(4, rh, p3) == XY(p3.x,rh[5].y)
+@test Tinker.get_p2(6, rh, p3) == XY(rh[5].x,p3.y)
+@test Tinker.get_p2(8, rh, p3) == XY(p3.x,rh[1].y)
+@test isnan(Tinker.get_p2(9,rh,p3).x)
+
+# Test init_selection_actions
+sa = Tinker.init_selection_actions(ctx)
+@test value(sa["enabled"]) == true
+@test value(sa["mode"]) == Tinker.freehand_mode

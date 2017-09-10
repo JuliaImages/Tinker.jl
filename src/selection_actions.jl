@@ -1,30 +1,5 @@
 # All mouse actions in one function
 
-# For point-based modification
-function get_p1(index::Int, rh::Array)
-    if isodd(index)
-        index == 1 && return rh[5]
-        index == 3 && return rh[7]
-        index == 5 && return rh[1]
-        index == 7 && return rh[3]
-    else
-        (index == 2 || index == 8) && return rh[5]
-        (index == 4 || index == 6) && return rh[1]
-    end
-end
-
-# For point-based modification
-function get_p2(index::Int, rh::Array, p::XY)
-    if isodd(index)
-        return p
-    else
-        index == 2 && return XY(rh[1].x, p.y)
-        index == 4 && return XY(p.x, rh[5].y)
-        index == 6 && return XY(rh[5].x, p.y)
-        index == 8 && return XY(p.x, rh[1].y)
-    end
-end
-
 # Returns array of all points that form rectangle made out of p1,p2
 function two_point_rect(p1,p2)
     r =  Rectangle(p1,p2)
@@ -55,6 +30,40 @@ function near_vertex(pt::XY, p::Array, t::Float64)
     return -1
 end
 
+# For point-based modification of rectangle:
+# Given an array of points corresponding to a rectangle (with midpoints),
+# and an integer that corresponds to an index of rh, returns the anchor point
+# for rectangle modification
+function get_p1(index::Int, rh::Array)
+    (index > 8 || index < 1) && return XY(NaN,NaN)
+    if isodd(index)
+        index == 1 && return rh[5]
+        index == 3 && return rh[7]
+        index == 5 && return rh[1]
+        index == 7 && return rh[3]
+    else
+        (index == 2 || index == 8) && return rh[5]
+        (index == 4 || index == 6) && return rh[1]
+    end
+end
+
+# For point-based modification of rectangle:
+# Given an array of points corresponding to a rectangle (with midpoints),
+# and an integer that corresponds to an index of rh, and a third point
+# corresponding to current mouse position, returns the location of the working
+# point for rectangle modification
+function get_p2(index::Int, rh::Array, p::XY)
+    (index > 8 || index < 1) && return XY(NaN,NaN)
+    if isodd(index)
+        return p
+    else
+        index == 2 && return XY(rh[1].x, p.y)
+        index == 4 && return XY(p.x, rh[5].y)
+        index == 6 && return XY(rh[5].x, p.y)
+        index == 8 && return XY(p.x, rh[1].y)
+    end
+end
+
 function init_selection_actions(c, points, shape, tol)
     # For conditionals:
     enabled = Signal(true)
@@ -82,62 +91,62 @@ function init_selection_actions(c, points, shape, tol)
         if (isp && typeof(value(shape)) == PolyHandle &&
             near_vertex(btn.position,pts,tol) != -1)
             # go to modifying poly by handle
-            println("start: modifying poly")
+            #println("start: modifying poly")
             push!(modifying,true)
             push!(index,near_vertex(btn.position,pts,tol))
         elseif (isp && typeof(value(shape)) == RectHandle && nearpt != -1)
             # go to modifying rect by handle
-            println("start: modifying rect")
+            #println("start: modifying rect")
             push!(modifying,true)
             push!(index,nearpt)
             push!(corners,(get_p1(nearpt,value(rh)),get_p2(nearpt,value(rh),btn.position)))
         elseif isp && isin
             # go to moving
-            println("start: moving shape")
+            #println("start: moving shape")
             push!(moving,true)
             push!(diff,XY{Float64}(btn.position)-XY{Float64}(pts[1]))
         else
             # Build new shape
             if value(mode) ==  rectangle_mode
                 # start rect actions
-                println("start: building rect")
+                #println("start: building rect")
                 push!(building,true)
                 push!(corners,(btn.position,btn.position))
                 push!(points,two_point_rect(btn.position,btn.position))
                 push!(shape, RectHandle())
             elseif value(mode) ==  freehand_mode
                 # start freehand actions
-                println("start: building freehand")
+                #println("start: building freehand")
                 push!(building,true)
                 push!(points,Vector{XY{Float64}}[])
                 push!(shape, Polygon())
             elseif value(mode) ==  polygon_mode
                 # start polygon actions
-                println("start: building polygon")
+                #println("start: building polygon")
                 if isempty(pts)
                     # add first point
-                    println("first point")
+                    #println("first point")
                     push!(following,true)
                     push!(points, [btn.position])
                     push!(num_pts,1)
                     push!(shape,  PolyHandle())
                 elseif !value(following)
                     # clears points
-                    println("clearing")
+                    #println("clearing")
                     push!(points, Vector{XY{Float64}}[])
                     push!(num_pts,0)
                 elseif !isp
                     if (length(pts) > 3 && near_point(pts[1],btn.position,tol)) #pts[1].x-tol <= btn.position.x <=
                         #pts[1].x+tol && pts[1].y-tol <= btn.position.y <= pts[1].y+tol)
                         # finishes polygon if click near start
-                        println("finishing")
+                        #println("finishing")
                         pts[end] = pts[1]
                         push!(points,pts)
                         push!(num_pts, length(pts))
                         push!(following,false)
                     else
                         # adds to polygon
-                        println("adding")
+                        #println("adding")
                         value(points)[end] = btn.position
                         push!(num_pts, length(pts))
                     end
