@@ -21,10 +21,11 @@ end
 function measure(selection) # also saves selection for labeling purposes?
   return @data([length(selection),avg_gray(selection),minimum(selection).val,maximum(selection).val])
 end
+
 #=
 using TestImages, Gtk.ShortNames
 
-img = testimage("pirate.tif")
+img = testimage("cameraman.tif")
 
 rectview = Signal(view(img,1:20,1:40))
 
@@ -46,15 +47,3 @@ push!(win2,nb)
 showall(win2)
 nothing
 =#
-
-
-
-
-# Other things:
-# Option to write measurements to file (save measurements)
-
-
-# ROI Manager:
-# For every selection: context ID & selection number
-# Numbered in order that they're made
-# Number displays on image in selection as well as in manager table
