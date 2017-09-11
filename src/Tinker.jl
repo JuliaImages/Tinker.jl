@@ -49,7 +49,7 @@ end
 
 # Calculates tolerance based on zoom level
 function get_tolerance(zr::ZoomRegion)
-  tol = 4*(IntervalSets.width(zr.currentview.x)/IntervalSets.width(zr.fullview.x))
+  tol = 5*(IntervalSets.width(zr.currentview.x)/IntervalSets.width(zr.fullview.x))
   return tol
 end
 
@@ -363,6 +363,7 @@ function set_mode(ctx::ImageContext, mode::Mode)
         println("Zoom mode")
         push!(ctx.mouseactions["pandrag"], true)
         push!(ctx.mouseactions["zoomclick"], true)
+        push!(ctx.mouseactions["select"],false)
     elseif mode == rectangle_mode # turn on rectangular region selection controls
         println("Rectangle mode")
         push!(ctx.mouseactions["select"],true)

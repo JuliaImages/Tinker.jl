@@ -1,5 +1,4 @@
 ## Initializes GUI
-
 # Toolbar
 win1 = Window("GUI", 450, 200)
 t = Grid()

@@ -115,5 +115,5 @@ rh = Tinker.two_point_rh(XY(1,1),XY(5.6,7.8))
 
 # Test init_selection_actions
 sa = Tinker.init_selection_actions(ctx)
-@test value(sa["enabled"]) == true
-@test value(sa["mode"]) == Tinker.freehand_mode
+@test value(sa["enabled"]) == false
+@test value(sa["mode"]) == Tinker.rectangle_mode
